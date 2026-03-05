@@ -1,0 +1,1166 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   Planning Poker 🃏 — Client Application  (Polling-based, no WebSocket)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+// ─── State ──────────────────────────────────────────────────────────────────
+const state = {
+  token: localStorage.getItem('pp_token'),
+  user: null,
+  sessions: [],
+  currentSession: null,
+  currentSessionId: null,
+  scales: {},
+  currentView: 'dashboard',
+  sessionTab: 'active',
+  myVote: null,
+  expandedHistory: new Set(),
+  pollTimer: null,
+  dashboardTimer: null,
+  lastStateJSON: null
+};
+
+// ─── API Helper ─────────────────────────────────────────────────────────────
+async function api(method, url, body) {
+  const opts = {
+    method,
+    headers: { 'Content-Type': 'application/json' }
+  };
+  if (state.token) opts.headers['Authorization'] = `Bearer ${state.token}`;
+  if (body) opts.body = JSON.stringify(body);
+  const res = await fetch(url, opts);
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'API hatası');
+  return data;
+}
+
+// ─── Polling ────────────────────────────────────────────────────────────────
+function startSessionPolling() {
+  stopSessionPolling();
+  pollSessionState();
+  state.pollTimer = setInterval(pollSessionState, 2000);
+}
+
+function stopSessionPolling() {
+  if (state.pollTimer) { clearInterval(state.pollTimer); state.pollTimer = null; }
+  state.lastStateJSON = null;
+}
+
+async function pollSessionState() {
+  if (!state.currentSessionId || !state.token) return;
+  try {
+    const data = await api('GET', `/api/sessions/${state.currentSessionId}/state`);
+    const json = JSON.stringify(data);
+    if (json !== state.lastStateJSON) {
+      state.currentSession = data;
+      state.lastStateJSON = json;
+      renderSession();
+    }
+  } catch (err) {
+    console.error('Polling hatası:', err);
+  }
+}
+
+function startDashboardPolling() {
+  stopDashboardPolling();
+  state.dashboardTimer = setInterval(() => {
+    if (state.currentView === 'dashboard') loadSessions();
+  }, 5000);
+}
+
+function stopDashboardPolling() {
+  if (state.dashboardTimer) { clearInterval(state.dashboardTimer); state.dashboardTimer = null; }
+}
+
+// ─── Auth ───────────────────────────────────────────────────────────────────
+async function handleLogin(e) {
+  e.preventDefault();
+  const errEl = document.getElementById('login-error');
+  errEl.textContent = '';
+  const username = document.getElementById('login-username').value.trim();
+  const password = document.getElementById('login-password').value;
+  try {
+    const data = await api('POST', '/api/login', { username, password });
+    state.token = data.token;
+    state.user = data.user;
+    localStorage.setItem('pp_token', data.token);
+    showApp();
+  } catch (err) {
+    errEl.textContent = err.message;
+  }
+}
+
+async function handleLogout() {
+  try { await api('POST', '/api/logout'); } catch {}
+  stopSessionPolling();
+  stopDashboardPolling();
+  state.token = null;
+  state.user = null;
+  state.currentSession = null;
+  state.currentSessionId = null;
+  localStorage.removeItem('pp_token');
+  localStorage.removeItem('pp_theme');
+  document.documentElement.removeAttribute('data-theme');
+  document.getElementById('login-screen').classList.add('active');
+  document.getElementById('app-screen').classList.remove('active');
+  document.getElementById('login-form').reset();
+  document.getElementById('login-error').textContent = '';
+}
+
+async function tryAutoLogin() {
+  if (!state.token) return false;
+  try {
+    state.user = await api('GET', '/api/me');
+    return true;
+  } catch {
+    localStorage.removeItem('pp_token');
+    state.token = null;
+    return false;
+  }
+}
+
+// ─── App Bootstrap ──────────────────────────────────────────────────────────
+function showApp() {
+  document.getElementById('login-screen').classList.remove('active');
+  document.getElementById('app-screen').classList.add('active');
+
+  const badge = document.getElementById('user-badge');
+  badge.textContent = `${state.user.avatar} ${state.user.displayName}`;
+
+  const adminBtn = document.getElementById('admin-nav-btn');
+  adminBtn.style.display = state.user.role === 'admin' ? '' : 'none';
+
+  const createBtn = document.getElementById('create-session-btn');
+  createBtn.style.display = ['admin', 'session_manager'].includes(state.user.role) ? '' : 'none';
+
+  applyTheme(state.user.theme || 'midnight');
+
+  showView('dashboard');
+  loadScales();
+  loadSessions();
+  startDashboardPolling();
+}
+
+// ─── View Navigation ────────────────────────────────────────────────────────
+function showView(name) {
+  state.currentView = name;
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById(`${name}-view`).classList.add('active');
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.view === name));
+
+  if (name === 'dashboard') {
+    if (state.currentSessionId) {
+      api('POST', `/api/sessions/${state.currentSessionId}/leave`).catch(() => {});
+      stopSessionPolling();
+      state.currentSession = null;
+      state.currentSessionId = null;
+      state.myVote = null;
+    }
+    loadSessions();
+    startDashboardPolling();
+  } else if (name === 'admin') {
+    loadUsers();
+  } else if (name === 'session') {
+    stopDashboardPolling();
+  }
+}
+
+// ─── Load Scales ────────────────────────────────────────────────────────────
+async function loadScales() {
+  try {
+    state.scales = await api('GET', '/api/scales');
+  } catch (err) {
+    console.error('Ölçek bilgisi yüklenemedi:', err);
+  }
+}
+
+// ═══ DASHBOARD ══════════════════════════════════════════════════════════════
+async function loadSessions() {
+  try {
+    state.sessions = await api('GET', '/api/sessions');
+    renderSessions();
+  } catch (err) {
+    showNotification('Oturumlar yüklenemedi: ' + err.message, 'error');
+  }
+}
+
+function renderSessions() {
+  const grid = document.getElementById('sessions-grid');
+  const empty = document.getElementById('no-sessions');
+  const filtered = state.sessions.filter(s => s.status === state.sessionTab);
+
+  if (filtered.length === 0) {
+    grid.innerHTML = '';
+    empty.style.display = '';
+    return;
+  }
+  empty.style.display = 'none';
+
+  grid.innerHTML = filtered.map(s => {
+    const scaleName = state.scales[s.scale]?.name || s.scale;
+    const scaleIcon = state.scales[s.scale]?.icon || '📊';
+    const timeSince = timeAgo(s.createdAt);
+    const isManager = ['admin', 'session_manager'].includes(state.user.role);
+    return `
+      <div class="session-card" onclick="joinSession('${s.id}')">
+        <div class="session-card-header">
+          <span class="session-card-title">${esc(s.name)}</span>
+          <span class="badge ${s.status === 'active' ? 'badge-success' : 'badge-danger'}">
+            ${s.status === 'active' ? '🟢 Aktif' : '🔴 Kapalı'}
+          </span>
+        </div>
+        ${s.description ? `<p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:8px">${esc(s.description)}</p>` : ''}
+        <div class="session-card-meta">
+          <span>${scaleIcon} ${scaleName}</span>
+          <span>📝 ${s.itemCount} oylama</span>
+          <span>👤 ${esc(s.creatorName)}</span>
+          <span>🕐 ${timeSince}</span>
+        </div>
+        ${isManager ? `
+          <div class="session-card-actions" onclick="event.stopPropagation()">
+            ${s.status === 'active'
+              ? `<button class="btn btn-ghost btn-sm" onclick="toggleSessionStatus('${s.id}','closed')">🔒 Kapat</button>`
+              : `<button class="btn btn-ghost btn-sm" onclick="toggleSessionStatus('${s.id}','active')">🔓 Aç</button>`
+            }
+            <button class="btn btn-ghost btn-sm" onclick="deleteSession('${s.id}')">🗑️</button>
+            <button class="btn btn-ghost btn-sm" onclick="exportSession('${s.id}','${escAttr(s.name)}')">📥</button>
+          </div>
+        ` : ''}
+      </div>
+    `;
+  }).join('');
+}
+
+async function toggleSessionStatus(id, status) {
+  try {
+    await api('PUT', `/api/sessions/${id}/status`, { status });
+    loadSessions();
+    showNotification(`Oturum ${status === 'active' ? 'açıldı' : 'kapatıldı'}`, 'success');
+  } catch (err) {
+    showNotification(err.message, 'error');
+  }
+}
+
+async function deleteSession(id) {
+  if (!confirm('Bu oturumu silmek istediğinize emin misiniz?')) return;
+  try {
+    await api('DELETE', `/api/sessions/${id}`);
+    loadSessions();
+    showNotification('Oturum silindi', 'success');
+  } catch (err) {
+    showNotification(err.message, 'error');
+  }
+}
+
+async function exportSession(id, name) {
+  try {
+    const data = await api('GET', `/api/sessions/${id}/export`);
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `planning-poker-${name.replace(/\s+/g, '_')}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showNotification('Dışa aktarıldı', 'success');
+  } catch (err) {
+    showNotification(err.message, 'error');
+  }
+}
+
+function showCreateSessionModal() {
+  const scaleOptions = Object.entries(state.scales).map(([key, s]) => {
+    const preview = s.values.slice(0, 6).join(', ') + '...';
+    return `
+      <div class="scale-option ${key === 'fibonacci' ? 'selected' : ''}" data-scale="${key}" onclick="selectScale(this, '${key}')">
+        <span class="scale-option-icon">${s.icon}</span>
+        <div>
+          <div class="scale-option-name">${s.name}</div>
+          <div class="scale-option-preview">${preview}</div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  showModal('Yeni Oturum Oluştur', `
+    <div class="input-group">
+      <label>Oturum Adı</label>
+      <input type="text" id="session-name-input" placeholder="ör: Sprint 14 Refinement" required>
+    </div>
+    <div class="input-group">
+      <label>Açıklama (opsiyonel)</label>
+      <input type="text" id="session-desc-input" placeholder="ör: Backend user stories">
+    </div>
+    <div class="input-group">
+      <label>Ölçek</label>
+      <div class="scale-options" id="scale-options">
+        ${scaleOptions}
+      </div>
+    </div>
+    <input type="hidden" id="selected-scale" value="fibonacci">
+    <button class="btn btn-primary btn-block" onclick="createSession()">🚀 Oturum Oluştur</button>
+  `);
+  setTimeout(() => document.getElementById('session-name-input')?.focus(), 200);
+}
+
+function selectScale(el, key) {
+  document.querySelectorAll('.scale-option').forEach(o => o.classList.remove('selected'));
+  el.classList.add('selected');
+  document.getElementById('selected-scale').value = key;
+}
+
+async function createSession() {
+  const name = document.getElementById('session-name-input').value.trim();
+  const description = document.getElementById('session-desc-input').value.trim();
+  const scale = document.getElementById('selected-scale').value;
+  if (!name) return showNotification('Oturum adı giriniz', 'warning');
+  try {
+    await api('POST', '/api/sessions', { name, description, scale });
+    hideModal();
+    loadSessions();
+    showNotification('Oturum oluşturuldu! 🎉', 'success');
+  } catch (err) {
+    showNotification(err.message, 'error');
+  }
+}
+
+// ═══ SESSION ════════════════════════════════════════════════════════════════
+async function joinSession(sessionId) {
+  state.myVote = null;
+  state.expandedHistory = new Set();
+  state.currentSessionId = sessionId;
+  state.lastStateJSON = null;
+  showView('session');
+  startSessionPolling();
+}
+
+function renderSession() {
+  const s = state.currentSession;
+  if (!s) return;
+
+  const isManager = ['admin', 'session_manager'].includes(state.user.role);
+  const currentItem = s.items.find(i => i.id === s.currentItemId && (i.status === 'voting' || i.status === 'revealed'));
+  const pendingItems = s.items.filter(i => i.status === 'pending');
+  const completedItems = s.items.filter(i => i.status === 'revealed' && i.id !== s.currentItemId).reverse();
+  const scale = state.scales[s.scale] || {};
+
+  document.getElementById('session-title').textContent = s.name;
+  document.getElementById('session-scale-badge').textContent = `${scale.icon || ''} ${scale.name || s.scale}`;
+  document.getElementById('session-status-badge').textContent = s.status === 'active' ? '🟢 Aktif' : '🔴 Kapalı';
+  document.getElementById('session-status-badge').className = `badge ${s.status === 'active' ? 'badge-success' : 'badge-danger'}`;
+
+  const controlsEl = document.getElementById('session-controls');
+  controlsEl.innerHTML = isManager && s.status === 'active'
+    ? `<button class="btn btn-danger btn-sm" onclick="closeCurrentSession()">🔒 Oturumu Kapat</button>`
+    : isManager && s.status === 'closed'
+    ? `<button class="btn btn-success btn-sm" onclick="reopenCurrentSession()">🔓 Yeniden Aç</button>`
+    : '';
+
+  const addArea = document.getElementById('add-item-area');
+  addArea.style.display = (isManager && s.status === 'active') ? '' : 'none';
+
+  // Pending items queue
+  renderPendingItems(pendingItems, isManager, s.status);
+
+  const curArea = document.getElementById('current-item-area');
+  if (currentItem) {
+    curArea.style.display = '';
+    document.getElementById('current-item-title').textContent = currentItem.title;
+    const statusEl = document.getElementById('current-item-status');
+    const votingActionsEl = document.getElementById('voting-actions');
+    if (currentItem.status === 'voting') {
+      statusEl.textContent = '⏳ Oylama devam ediyor...';
+      statusEl.className = 'badge badge-warning';
+      const voteCount = Object.keys(currentItem.votes).length;
+      if (isManager) {
+        votingActionsEl.innerHTML = `
+          <button class="btn btn-primary btn-sm" onclick="revealVotes()" title="Oyları göster">
+            👁️ Oyları Göster ${voteCount > 0 ? '(' + voteCount + ' oy)' : ''}
+          </button>
+        `;
+      } else {
+        votingActionsEl.innerHTML = '';
+      }
+    } else if (currentItem.status === 'revealed') {
+      statusEl.textContent = '✅ Sonuçlar Açıklandı';
+      statusEl.className = 'badge badge-success';
+      if (isManager) {
+        votingActionsEl.innerHTML = `
+          <button class="btn btn-danger btn-sm" onclick="closeVoting()">📥 Geçmişe Gönder</button>
+        `;
+      } else {
+        votingActionsEl.innerHTML = '';
+      }
+    }
+    const roundNum = currentItem.rounds ? currentItem.rounds.length + 1 : 1;
+    document.getElementById('round-info').textContent = roundNum > 1 ? `Tur ${roundNum}` : '';
+  } else {
+    curArea.style.display = 'none';
+  }
+
+  renderVotingCards(currentItem, scale, s.status);
+  renderParticipants(currentItem);
+  renderResults(currentItem, scale, isManager);
+  renderItemsHistory(completedItems, scale);
+}
+
+function renderPendingItems(pendingItems, isManager, sessionStatus) {
+  const area = document.getElementById('pending-items-area');
+  const list = document.getElementById('pending-items-list');
+  const countEl = document.getElementById('pending-count');
+
+  if (pendingItems.length === 0) {
+    area.style.display = 'none';
+    return;
+  }
+
+  area.style.display = '';
+  countEl.textContent = pendingItems.length;
+
+  // Check if there's an active voting item (admin must reveal first)
+  const hasActiveVoting = state.currentSession?.items.some(i => i.status === 'voting');
+
+  list.innerHTML = pendingItems.map((item, idx) => `
+    <div class="pending-item card" style="padding:10px 14px;margin-bottom:6px;display:flex;align-items:center;justify-content:space-between">
+      <span style="font-size:0.9rem"><strong>${idx + 1}.</strong> ${esc(item.title)}</span>
+      ${isManager && sessionStatus === 'active' ? `
+        <button class="btn btn-success btn-sm" onclick="startVoting('${item.id}')"
+                ${hasActiveVoting ? 'disabled title="Önce mevcut oylamayı sonlandırın"' : ''}>
+          ▶️ Oylamaya Başla
+        </button>
+      ` : ''}
+    </div>
+  `).join('');
+}
+
+function renderVotingCards(currentItem, scale, sessionStatus) {
+  const area = document.getElementById('voting-cards-area');
+  const container = document.getElementById('voting-cards');
+
+  if (!currentItem || currentItem.status !== 'voting' || sessionStatus !== 'active') {
+    area.style.display = 'none';
+    return;
+  }
+
+  area.style.display = '';
+  const values = scale.values || [];
+  const labels = scale.labels || {};
+
+  container.innerHTML = values.map(v => {
+    const isSelected = state.myVote === v;
+    const label = labels[v] || '';
+    const isSpecial = v === '?' || v === '☕' || v === '🤷';
+    return `
+      <div class="vote-card ${isSelected ? 'selected' : ''} ${isSpecial ? 'vote-card-special' : ''}"
+           onclick="castVote('${escAttr(v)}')" title="${esc(label)}">
+        <span>${v}</span>
+        ${label ? `<span class="vote-label">${esc(label)}</span>` : ''}
+      </div>
+    `;
+  }).join('');
+}
+
+function renderParticipants(currentItem) {
+  const s = state.currentSession;
+  if (!s) return;
+
+  const list = document.getElementById('participants-list');
+  const countEl = document.getElementById('participants-count');
+  const participants = s.participants || [];
+  countEl.textContent = participants.length;
+
+  list.innerHTML = participants.map(p => {
+    let statusClass = '';
+    let voteDisplay = '';
+
+    if (currentItem) {
+      const vote = currentItem.votes[p.id];
+      if (currentItem.status === 'voting') {
+        if (vote && vote.voted) {
+          statusClass = 'voted';
+          voteDisplay = '✓ Oylandı';
+        } else {
+          statusClass = 'not-voted';
+          voteDisplay = '⏳ Bekliyor';
+        }
+      } else if (currentItem.status === 'revealed') {
+        statusClass = 'revealed';
+        voteDisplay = vote ? vote.value : '—';
+      }
+    }
+
+    return `
+      <div class="participant ${statusClass}">
+        <span class="participant-avatar">${p.avatar}</span>
+        <span class="participant-name">${esc(p.displayName)}</span>
+        ${voteDisplay ? `<span class="participant-vote">${voteDisplay}</span>` : ''}
+      </div>
+    `;
+  }).join('');
+}
+
+function renderResults(currentItem, scale, isManager) {
+  const area = document.getElementById('results-area');
+  if (!currentItem || currentItem.status !== 'revealed') {
+    area.style.display = 'none';
+    return;
+  }
+
+  area.style.display = '';
+  const result = currentItem.result;
+  const summaryEl = document.getElementById('results-summary');
+  const votesEl = document.getElementById('results-votes');
+  const actionsEl = document.getElementById('results-actions');
+
+  if (result) {
+    summaryEl.innerHTML = `
+      <div class="result-stat ${result.consensus ? 'consensus' : ''}">
+        <div class="result-stat-value">${result.consensus ? '🎯' : ''} ${result.average ?? '—'}</div>
+        <div class="result-stat-label">Ortalama</div>
+      </div>
+      <div class="result-stat">
+        <div class="result-stat-value">${result.median ?? '—'}</div>
+        <div class="result-stat-label">Medyan</div>
+      </div>
+      <div class="result-stat">
+        <div class="result-stat-value">${result.min ?? '—'}</div>
+        <div class="result-stat-label">Minimum</div>
+      </div>
+      <div class="result-stat">
+        <div class="result-stat-value">${result.max ?? '—'}</div>
+        <div class="result-stat-label">Maksimum</div>
+      </div>
+      ${result.consensus ? `
+        <div class="result-stat consensus" style="grid-column:1/-1">
+          <div class="result-stat-value">🎉 Konsensüs!</div>
+          <div class="result-stat-label">Herkes aynı oyu verdi</div>
+        </div>
+      ` : ''}
+    `;
+    if (result.consensus) triggerConfetti();
+  } else {
+    summaryEl.innerHTML = '<p style="color:var(--text-muted)">Sonuç hesaplanamadı</p>';
+  }
+
+  const votes = Object.entries(currentItem.votes);
+  votesEl.innerHTML = votes.map(([uid, v], i) => `
+    <div class="result-vote-card animate-pop" style="animation-delay:${i * 0.1}s">
+      <span class="rv-avatar">${v.avatar || '👤'}</span>
+      <span class="rv-name">${esc(v.displayName || uid)}</span>
+      <span class="rv-value">${v.value}</span>
+    </div>
+  `).join('');
+
+  if (isManager && state.currentSession?.status === 'active') {
+    actionsEl.innerHTML = `
+      <button class="btn btn-warning" onclick="revote()">🔄 Yeniden Oyla</button>
+      <button class="btn btn-danger" onclick="closeVoting()">📥 Geçmişe Gönder</button>
+    `;
+  } else {
+    actionsEl.innerHTML = '';
+  }
+}
+
+function renderItemsHistory(completedItems, scale) {
+  const container = document.getElementById('items-history');
+  const empty = document.getElementById('no-items');
+
+  if (completedItems.length === 0) {
+    container.innerHTML = '';
+    empty.style.display = '';
+    return;
+  }
+  empty.style.display = 'none';
+
+  const isManager = ['admin', 'session_manager'].includes(state.user.role);
+
+  container.innerHTML = completedItems.map((item, idx) => {
+    const isExpanded = state.expandedHistory.has(item.id);
+    const result = item.result;
+    const voteCount = Object.keys(item.votes).length;
+    const roundCount = (item.rounds?.length || 0) + 1;
+
+    let detailHTML = '';
+    if (isExpanded) {
+      const voteEntries = Object.entries(item.votes);
+      detailHTML = `
+        <div class="history-item-detail" style="margin-top:10px">
+          ${item.status === 'revealed' && result ? `
+            <div style="margin-bottom:10px;font-size:0.85rem;color:var(--text-secondary)">
+              Ort: <strong style="color:var(--accent)">${result.average}</strong> &nbsp;|&nbsp;
+              Med: <strong>${result.median}</strong> &nbsp;|&nbsp;
+              Min: ${result.min} &nbsp;|&nbsp; Max: ${result.max}
+              ${result.consensus ? ' &nbsp;|&nbsp; 🎯 Konsensüs!' : ''}
+            </div>
+          ` : ''}
+          ${voteEntries.length > 0 ? `
+            <div class="history-votes-grid">
+              ${voteEntries.map(([uid, v]) => `
+                <span class="history-vote-chip">
+                  <span class="hv-name">${v.avatar || '👤'} ${esc(v.displayName || uid)}</span>
+                  <span class="hv-value">${v.value}</span>
+                </span>
+              `).join('')}
+            </div>
+          ` : '<p style="color:var(--text-muted);font-size:0.85rem">Oy kullanılmamış</p>'}
+          ${isManager ? `
+            <div style="margin-top:10px">
+              <button class="btn btn-warning btn-sm" onclick="event.stopPropagation(); revoteHistoryItem('${item.id}')">🔄 Yeniden Oyla</button>
+            </div>
+          ` : ''}
+        </div>
+      `;
+    }
+
+    return `
+      <div class="history-item ${isExpanded ? 'expanded' : ''}" onclick="toggleHistoryItem('${item.id}')" style="cursor:pointer">
+        <div class="history-item-header">
+          <span class="history-item-title">${esc(item.title)}</span>
+          <span class="badge ${item.status === 'revealed' ? 'badge-success' : 'badge-warning'}">
+            ${item.status === 'revealed' ? '✅' : '⏳'}
+          </span>
+        </div>
+        <div class="history-item-meta">
+          <span>👥 ${voteCount} oy</span>
+          ${result ? `<span>📊 Ort: ${result.average}</span>` : ''}
+          ${roundCount > 1 ? `<span>🔄 ${roundCount} tur</span>` : ''}
+          ${result?.consensus ? '<span>🎯 Konsensüs</span>' : ''}
+          <span style="margin-left:auto;font-size:0.75rem;color:var(--text-muted)">${isExpanded ? '▲ Kapat' : '▼ Detay'}</span>
+        </div>
+        ${detailHTML}
+      </div>
+    `;
+  }).join('');
+}
+
+function toggleHistoryItem(itemId) {
+  if (state.expandedHistory.has(itemId)) {
+    state.expandedHistory.delete(itemId);
+  } else {
+    state.expandedHistory.add(itemId);
+  }
+  renderSession();
+}
+
+async function revoteHistoryItem(itemId) {
+  if (!state.currentSessionId) return;
+  state.myVote = null;
+  try {
+    await api('POST', `/api/sessions/${state.currentSessionId}/items/${itemId}/revote`);
+  } catch (err) {
+    showNotification(err.message, 'error');
+  }
+}
+
+// ─── Session Actions (REST API) ─────────────────────────────────────────────
+async function castVote(value) {
+  const s = state.currentSession;
+  if (!s) return;
+  const currentItem = s.items.find(i => i.id === s.currentItemId);
+  if (!currentItem || currentItem.status !== 'voting') return;
+
+  state.myVote = value;
+  const cards = document.querySelectorAll('.vote-card');
+  cards.forEach(c => {
+    const cardValue = c.querySelector('span').textContent;
+    c.classList.toggle('selected', cardValue === value);
+  });
+
+  try {
+    await api('POST', `/api/sessions/${s.id}/items/${currentItem.id}/vote`, { value });
+  } catch (err) {
+    showNotification(err.message, 'error');
+  }
+}
+
+async function addItem() {
+  const input = document.getElementById('new-item-input');
+  const title = input.value.trim();
+  if (!title || !state.currentSessionId) return;
+  try {
+    await api('POST', `/api/sessions/${state.currentSessionId}/items`, { title });
+    input.value = '';
+    showNotification('İş eklendi, oylama bekliyor', 'success');
+  } catch (err) {
+    showNotification(err.message, 'error');
+  }
+}
+
+async function startVoting(itemId) {
+  if (!state.currentSessionId) return;
+  state.myVote = null;
+  try {
+    await api('POST', `/api/sessions/${state.currentSessionId}/items/${itemId}/start`);
+  } catch (err) {
+    showNotification(err.message, 'error');
+  }
+}
+
+async function revealVotes() {
+  const s = state.currentSession;
+  if (!s) return;
+  const currentItem = s.items.find(i => i.id === s.currentItemId);
+  if (!currentItem) return;
+  try {
+    await api('POST', `/api/sessions/${s.id}/items/${currentItem.id}/reveal`);
+  } catch (err) {
+    showNotification(err.message, 'error');
+  }
+}
+
+async function revote() {
+  const s = state.currentSession;
+  if (!s) return;
+  const currentItem = s.items.find(i => i.id === s.currentItemId);
+  if (!currentItem) return;
+  state.myVote = null;
+  try {
+    await api('POST', `/api/sessions/${s.id}/items/${currentItem.id}/revote`);
+  } catch (err) {
+    showNotification(err.message, 'error');
+  }
+}
+
+async function closeCurrentSession() {
+  const s = state.currentSession;
+  if (!s) return;
+  try {
+    await api('PUT', `/api/sessions/${s.id}/status`, { status: 'closed' });
+    showNotification('Oturum kapatıldı', 'success');
+  } catch (err) {
+    showNotification(err.message, 'error');
+  }
+}
+
+async function reopenCurrentSession() {
+  const s = state.currentSession;
+  if (!s) return;
+  try {
+    await api('PUT', `/api/sessions/${s.id}/status`, { status: 'active' });
+    showNotification('Oturum yeniden açıldı', 'success');
+  } catch (err) {
+    showNotification(err.message, 'error');
+  }
+}
+
+async function closeVoting() {
+  const s = state.currentSession;
+  if (!s) return;
+  const currentItem = s.items.find(i => i.id === s.currentItemId);
+  if (!currentItem) return;
+  try {
+    await api('POST', `/api/sessions/${s.id}/items/${currentItem.id}/close`);
+  } catch (err) {
+    showNotification(err.message, 'error');
+  }
+}
+
+// ═══ PROFILE & THEMES ══════════════════════════════════════════════════════
+const THEMES = [
+  { id: 'midnight', name: 'Gece Moru', icon: '🌙', color: '#7c3aed' },
+  { id: 'ocean', name: 'Okyanus', icon: '🌊', color: '#3b82f6' },
+  { id: 'forest', name: 'Orman', icon: '🌲', color: '#10b981' },
+  { id: 'sunset', name: 'Gün Batımı', icon: '🌅', color: '#f97316' },
+  { id: 'rose', name: 'Gül', icon: '🌹', color: '#ec4899' },
+  { id: 'light', name: 'Aydınlık', icon: '☀️', color: '#6366f1' },
+];
+
+function applyTheme(theme) {
+  if (theme && theme !== 'midnight') {
+    document.documentElement.setAttribute('data-theme', theme);
+  } else {
+    document.documentElement.removeAttribute('data-theme');
+  }
+  localStorage.setItem('pp_theme', theme || 'midnight');
+}
+
+function showProfileModal() {
+  const u = state.user;
+  const avatars = ['👑','🦊','🐱','🐶','🐼','🦁','🐸','🐵','🦄','🐲','🦅','🐺','🦈','🐍','🦋','🐢','🦉','🐧','🐙','🎯','🚀','⚡','🔥','💎','🎸','🎮','🏆','🌟'];
+  const currentTheme = u.theme || 'midnight';
+
+  showModal('👤 Profil Ayarları', `
+    <div class="input-group">
+      <label>Görünen Ad</label>
+      <input type="text" id="profile-displayname" value="${esc(u.displayName)}">
+    </div>
+    <div class="input-group">
+      <label>Avatar</label>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;">
+        ${avatars.map(a => `
+          <span class="vote-card" style="width:40px;height:40px;font-size:1.2rem;${a === u.avatar ? 'border-color:var(--accent)' : ''}"
+                onclick="selectProfileAvatar(this,'${a}')" data-avatar="${a}">${a}</span>
+        `).join('')}
+      </div>
+      <input type="hidden" id="profile-avatar" value="${u.avatar}">
+    </div>
+    <div class="input-group">
+      <label>Tema</label>
+      <div class="theme-grid">
+        ${THEMES.map(t => `
+          <div class="theme-option ${t.id === currentTheme ? 'selected' : ''}" onclick="selectTheme(this, '${t.id}')" data-theme="${t.id}">
+            <span class="theme-swatch" style="background:${t.color}"></span>
+            <span>${t.icon} ${t.name}</span>
+          </div>
+        `).join('')}
+      </div>
+      <input type="hidden" id="profile-theme" value="${currentTheme}">
+    </div>
+    <button class="btn btn-primary btn-block" onclick="saveProfile()">💾 Profili Kaydet</button>
+    <hr style="border-color:var(--border);margin:20px 0">
+    <h4 style="margin-bottom:12px;font-size:0.95rem">🔒 Şifre Değiştir</h4>
+    <div class="input-group">
+      <label>Mevcut Şifre</label>
+      <input type="password" id="profile-current-pw" placeholder="••••••">
+    </div>
+    <div class="input-group">
+      <label>Yeni Şifre</label>
+      <input type="password" id="profile-new-pw" placeholder="••••••">
+    </div>
+    <button class="btn btn-warning btn-block" onclick="changePassword()">🔑 Şifre Değiştir</button>
+  `);
+}
+
+function selectProfileAvatar(el, avatar) {
+  el.parentElement.querySelectorAll('.vote-card').forEach(c => c.style.borderColor = '');
+  el.style.borderColor = 'var(--accent)';
+  document.getElementById('profile-avatar').value = avatar;
+}
+
+function selectTheme(el, themeId) {
+  document.querySelectorAll('.theme-option').forEach(o => o.classList.remove('selected'));
+  el.classList.add('selected');
+  document.getElementById('profile-theme').value = themeId;
+  applyTheme(themeId);
+}
+
+async function saveProfile() {
+  const displayName = document.getElementById('profile-displayname').value.trim();
+  const avatar = document.getElementById('profile-avatar').value;
+  const theme = document.getElementById('profile-theme').value;
+  if (!displayName) return showNotification('Görünen ad boş olamaz', 'warning');
+  try {
+    const data = await api('PUT', '/api/me', { displayName, avatar, theme });
+    state.user.displayName = data.displayName;
+    state.user.avatar = data.avatar;
+    state.user.theme = data.theme;
+    document.getElementById('user-badge').textContent = `${state.user.avatar} ${state.user.displayName}`;
+    applyTheme(theme);
+    hideModal();
+    showNotification('Profil güncellendi! ✨', 'success');
+  } catch (err) {
+    showNotification(err.message, 'error');
+  }
+}
+
+async function changePassword() {
+  const currentPassword = document.getElementById('profile-current-pw').value;
+  const newPassword = document.getElementById('profile-new-pw').value;
+  if (!currentPassword || !newPassword) return showNotification('Her iki şifre alanını doldurunuz', 'warning');
+  try {
+    await api('PUT', '/api/me/password', { currentPassword, newPassword });
+    document.getElementById('profile-current-pw').value = '';
+    document.getElementById('profile-new-pw').value = '';
+    showNotification('Şifre değiştirildi! 🔑', 'success');
+  } catch (err) {
+    showNotification(err.message, 'error');
+  }
+}
+
+// ═══ ADMIN ══════════════════════════════════════════════════════════════════
+async function loadUsers() {
+  try {
+    const usersList = await api('GET', '/api/users');
+    renderUsers(usersList);
+  } catch (err) {
+    showNotification('Kullanıcılar yüklenemedi: ' + err.message, 'error');
+  }
+}
+
+function renderUsers(usersList) {
+  const container = document.getElementById('users-table-container');
+  const roleLabels = { admin: '👑 Admin', session_manager: '📋 Oturum Yöneticisi', voter: '🗳️ Oylayıcı' };
+  const roleColors = { admin: 'badge-danger', session_manager: 'badge-warning', voter: 'badge-info' };
+
+  container.innerHTML = `
+    <table class="users-table">
+      <thead>
+        <tr>
+          <th></th>
+          <th>Kullanıcı Adı</th>
+          <th>Görünen Ad</th>
+          <th>Rol</th>
+          <th>Durum</th>
+          <th>İşlemler</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${usersList.map(u => `
+          <tr style="${!u.active ? 'opacity:0.5' : ''}">
+            <td class="user-avatar">${u.avatar}</td>
+            <td><strong>${esc(u.username)}</strong></td>
+            <td>${esc(u.displayName)}</td>
+            <td><span class="badge role-badge ${roleColors[u.role] || ''}">${roleLabels[u.role] || u.role}</span></td>
+            <td><span class="badge ${u.active ? 'badge-success' : 'badge-danger'}">${u.active ? 'Aktif' : 'Pasif'}</span></td>
+            <td class="user-actions">
+              <button class="btn btn-ghost btn-sm" onclick="showEditUserModal('${u.id}','${escAttr(u.username)}','${escAttr(u.displayName)}','${u.role}','${u.avatar}',${u.active})">✏️</button>
+              ${u.username !== 'admin' ? `<button class="btn btn-ghost btn-sm" onclick="toggleUserActive('${u.id}',${!u.active})">${u.active ? '🚫' : '✅'}</button>` : ''}
+            </td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+function showAddUserModal() {
+  const avatars = ['🦊','🐱','🐶','🐼','🦁','🐸','🐵','🦄','🐲','🦅','🐺','🦈','🐍','🦋','🐢','🦉','🐧','🐙'];
+  showModal('Yeni Kullanıcı Ekle', `
+    <div class="input-group">
+      <label>Kullanıcı Adı</label>
+      <input type="text" id="new-username" placeholder="kullanici_adi" required>
+    </div>
+    <div class="input-group">
+      <label>Görünen Ad</label>
+      <input type="text" id="new-displayname" placeholder="Ad Soyad" required>
+    </div>
+    <div class="input-group">
+      <label>Şifre</label>
+      <input type="password" id="new-password" placeholder="••••••" required>
+    </div>
+    <div class="input-group">
+      <label>Rol</label>
+      <select id="new-role">
+        <option value="voter">🗳️ Oylayıcı</option>
+        <option value="session_manager">📋 Oturum Yöneticisi</option>
+        <option value="admin">👑 Admin</option>
+      </select>
+    </div>
+    <div class="input-group">
+      <label>Avatar</label>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;">
+        ${avatars.map((a, i) => `
+          <span class="vote-card" style="width:40px;height:40px;font-size:1.2rem;${i === 0 ? 'border-color:var(--accent)' : ''}"
+                onclick="selectAvatar(this,'${a}')" data-avatar="${a}">${a}</span>
+        `).join('')}
+      </div>
+      <input type="hidden" id="new-avatar" value="${avatars[0]}">
+    </div>
+    <button class="btn btn-primary btn-block" onclick="createUser()">Kullanıcı Oluştur</button>
+  `);
+  setTimeout(() => document.getElementById('new-username')?.focus(), 200);
+}
+
+function selectAvatar(el, avatar) {
+  el.parentElement.querySelectorAll('.vote-card').forEach(c => c.style.borderColor = '');
+  el.style.borderColor = 'var(--accent)';
+  document.getElementById('new-avatar').value = avatar;
+}
+
+async function createUser() {
+  const username = document.getElementById('new-username').value.trim();
+  const displayName = document.getElementById('new-displayname').value.trim();
+  const password = document.getElementById('new-password').value;
+  const role = document.getElementById('new-role').value;
+  const avatar = document.getElementById('new-avatar').value;
+  if (!username || !displayName || !password)
+    return showNotification('Tüm alanları doldurunuz', 'warning');
+  try {
+    await api('POST', '/api/users', { username, displayName, password, role, avatar });
+    hideModal();
+    loadUsers();
+    showNotification('Kullanıcı oluşturuldu! 🎉', 'success');
+  } catch (err) {
+    showNotification(err.message, 'error');
+  }
+}
+
+function showEditUserModal(id, username, displayName, role, avatar, active) {
+  showModal('Kullanıcı Düzenle', `
+    <div class="input-group">
+      <label>Kullanıcı Adı</label>
+      <input type="text" value="${esc(username)}" disabled style="opacity:0.5">
+    </div>
+    <div class="input-group">
+      <label>Görünen Ad</label>
+      <input type="text" id="edit-displayname" value="${esc(displayName)}">
+    </div>
+    <div class="input-group">
+      <label>Yeni Şifre (boş bırakılırsa değişmez)</label>
+      <input type="password" id="edit-password" placeholder="••••••">
+    </div>
+    <div class="input-group">
+      <label>Rol</label>
+      <select id="edit-role">
+        <option value="voter" ${role === 'voter' ? 'selected' : ''}>🗳️ Oylayıcı</option>
+        <option value="session_manager" ${role === 'session_manager' ? 'selected' : ''}>📋 Oturum Yöneticisi</option>
+        <option value="admin" ${role === 'admin' ? 'selected' : ''}>👑 Admin</option>
+      </select>
+    </div>
+    <button class="btn btn-primary btn-block" onclick="updateUser('${id}')">Kaydet</button>
+  `);
+}
+
+async function updateUser(id) {
+  const displayName = document.getElementById('edit-displayname').value.trim();
+  const password = document.getElementById('edit-password').value;
+  const role = document.getElementById('edit-role').value;
+  const body = { displayName, role };
+  if (password) body.password = password;
+  try {
+    await api('PUT', `/api/users/${id}`, body);
+    hideModal();
+    loadUsers();
+    showNotification('Kullanıcı güncellendi', 'success');
+  } catch (err) {
+    showNotification(err.message, 'error');
+  }
+}
+
+async function toggleUserActive(id, active) {
+  try {
+    await api('PUT', `/api/users/${id}`, { active });
+    loadUsers();
+    showNotification(active ? 'Kullanıcı aktifleştirildi' : 'Kullanıcı pasifleştirildi', 'success');
+  } catch (err) {
+    showNotification(err.message, 'error');
+  }
+}
+
+// ═══ MODAL ══════════════════════════════════════════════════════════════════
+function showModal(title, bodyHTML) {
+  document.getElementById('modal-title').textContent = title;
+  document.getElementById('modal-body').innerHTML = bodyHTML;
+  document.getElementById('modal-overlay').style.display = 'flex';
+}
+
+function hideModal() {
+  document.getElementById('modal-overlay').style.display = 'none';
+}
+
+// ═══ NOTIFICATIONS ══════════════════════════════════════════════════════════
+function showNotification(message, type = 'info') {
+  const container = document.getElementById('notifications');
+  const el = document.createElement('div');
+  el.className = `notification ${type}`;
+  el.textContent = message;
+  container.appendChild(el);
+  setTimeout(() => el.remove(), 4000);
+}
+
+// ═══ CONFETTI ═══════════════════════════════════════════════════════════════
+function triggerConfetti() {
+  const canvas = document.getElementById('confetti-canvas');
+  const ctx = canvas.getContext('2d');
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+
+  const particles = [];
+  const colors = ['#7c3aed', '#06d6a0', '#f59e0b', '#ef4444', '#3b82f6', '#ec4899'];
+
+  for (let i = 0; i < 150; i++) {
+    particles.push({
+      x: Math.random() * canvas.width,
+      y: Math.random() * canvas.height - canvas.height,
+      vx: (Math.random() - 0.5) * 8,
+      vy: Math.random() * 3 + 2,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      size: Math.random() * 6 + 3,
+      rotation: Math.random() * 360,
+      rotSpeed: (Math.random() - 0.5) * 10
+    });
+  }
+
+  let frame = 0;
+  function animate() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    particles.forEach(p => {
+      p.x += p.vx;
+      p.y += p.vy;
+      p.vy += 0.1;
+      p.rotation += p.rotSpeed;
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rotation * Math.PI / 180);
+      ctx.fillStyle = p.color;
+      ctx.globalAlpha = Math.max(0, 1 - frame / 120);
+      ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.6);
+      ctx.restore();
+    });
+    frame++;
+    if (frame < 120) requestAnimationFrame(animate);
+    else ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }
+  animate();
+}
+
+// ═══ UTILITIES ══════════════════════════════════════════════════════════════
+function esc(str) {
+  const d = document.createElement('div');
+  d.textContent = str || '';
+  return d.innerHTML;
+}
+
+function escAttr(str) {
+  return (str || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+}
+
+function timeAgo(iso) {
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'az önce';
+  if (mins < 60) return `${mins} dk önce`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours} saat önce`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days} gün önce`;
+  return new Date(iso).toLocaleDateString('tr-TR');
+}
+
+// ═══ EVENT BINDINGS ═════════════════════════════════════════════════════════
+function bindEvents() {
+  document.getElementById('login-form').addEventListener('submit', handleLogin);
+  document.getElementById('logout-btn').addEventListener('click', handleLogout);
+
+  document.querySelectorAll('.nav-btn[data-view]').forEach(btn => {
+    btn.addEventListener('click', () => showView(btn.dataset.view));
+  });
+
+  document.querySelectorAll('.tab[data-tab]').forEach(tab => {
+    tab.addEventListener('click', () => {
+      state.sessionTab = tab.dataset.tab;
+      document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t === tab));
+      renderSessions();
+    });
+  });
+
+  document.getElementById('create-session-btn').addEventListener('click', showCreateSessionModal);
+  document.getElementById('add-user-btn').addEventListener('click', showAddUserModal);
+  document.getElementById('back-to-dashboard').addEventListener('click', () => showView('dashboard'));
+
+  document.getElementById('add-item-btn').addEventListener('click', addItem);
+  document.getElementById('new-item-input').addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') addItem();
+  });
+
+  document.getElementById('modal-close').addEventListener('click', hideModal);
+  document.getElementById('modal-overlay').addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) hideModal();
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') hideModal();
+  });
+}
+
+// ═══ INIT ═══════════════════════════════════════════════════════════════════
+async function init() {
+  bindEvents();
+  const loggedIn = await tryAutoLogin();
+  if (loggedIn) {
+    showApp();
+  }
+}
+
+window.PP = { showView };
+
+document.addEventListener('DOMContentLoaded', init);

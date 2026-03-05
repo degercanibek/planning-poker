@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Planning Poker 🃏</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🃏</text></svg>">
+</head>
+<body>
+  <!-- Notifications -->
+  <div id="notifications"></div>
+
+  <!-- ═══ LOGIN SCREEN ═══ -->
+  <div id="login-screen" class="screen active">
+    <div class="login-container">
+      <div class="login-card">
+        <div class="login-logo">🃏</div>
+        <h1>Planning Poker</h1>
+        <p class="login-subtitle">Scrum Estimation Made Fun</p>
+        <form id="login-form">
+          <div class="input-group">
+            <label for="login-username">Kullanıcı Adı</label>
+            <input type="text" id="login-username" placeholder="kullanici_adi" required autocomplete="username">
+          </div>
+          <div class="input-group">
+            <label for="login-password">Şifre</label>
+            <input type="password" id="login-password" placeholder="••••••" required autocomplete="current-password">
+          </div>
+          <button type="submit" class="btn btn-primary btn-block" id="login-btn">Giriş Yap</button>
+          <p id="login-error" class="error-text"></p>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ APP SCREEN ═══ -->
+  <div id="app-screen" class="screen">
+    <!-- Header -->
+    <header id="app-header">
+      <div class="header-left">
+        <span class="logo" onclick="window.PP.showView('dashboard')">🃏 Planning Poker</span>
+      </div>
+      <nav class="header-nav">
+        <button class="nav-btn active" data-view="dashboard">
+          <span class="nav-icon">📋</span><span class="nav-label">Oturumlar</span>
+        </button>
+        <button class="nav-btn" data-view="admin" id="admin-nav-btn" style="display:none">
+          <span class="nav-icon">👥</span><span class="nav-label">Yönetim</span>
+        </button>
+      </nav>
+      <div class="header-right">
+        <span id="user-badge" class="user-badge" onclick="showProfileModal()" style="cursor:pointer" title="Profil Ayarları"></span>
+        <button id="logout-btn" class="btn btn-ghost btn-sm">Çıkış</button>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <main id="main-content">
+
+      <!-- ── Dashboard View ── -->
+      <div id="dashboard-view" class="view active">
+        <div class="view-header">
+          <h2>📋 Oturumlar</h2>
+          <button id="create-session-btn" class="btn btn-primary" style="display:none">+ Yeni Oturum</button>
+        </div>
+        <div class="tabs">
+          <button class="tab active" data-tab="active">🟢 Aktif</button>
+          <button class="tab" data-tab="closed">🔴 Kapalı</button>
+        </div>
+        <div id="sessions-grid" class="card-grid"></div>
+        <div id="no-sessions" class="empty-state" style="display:none">
+          <div class="empty-icon">🎯</div>
+          <p>Henüz oturum yok</p>
+        </div>
+      </div>
+
+      <!-- ── Session View ── -->
+      <div id="session-view" class="view">
+        <!-- Toolbar -->
+        <div id="session-toolbar">
+          <button id="back-to-dashboard" class="btn btn-ghost">← Geri</button>
+          <div class="session-title-area">
+            <h2 id="session-title"></h2>
+            <span id="session-scale-badge" class="badge"></span>
+            <span id="session-status-badge" class="badge"></span>
+          </div>
+          <div id="session-controls"></div>
+        </div>
+
+        <!-- Add Item -->
+        <div id="add-item-area" class="card" style="display:none">
+          <div class="add-item-row">
+            <input type="text" id="new-item-input" placeholder="İş başlığını girin... (ör: US-123 Login ekranı)" class="input-lg">
+            <button id="add-item-btn" class="btn btn-primary">� Listeye Ekle</button>
+          </div>
+        </div>
+
+        <!-- Pending Items Queue -->
+        <div id="pending-items-area" style="display:none">
+          <h4 class="section-label">📋 Oylama Bekleyenler <span id="pending-count" class="badge badge-sm">0</span></h4>
+          <div id="pending-items-list"></div>
+        </div>
+
+        <!-- Current Item -->
+        <div id="current-item-area" class="card" style="display:none">
+          <div class="current-item-header">
+            <span class="current-item-label">Güncel Oylama</span>
+            <span id="round-info" class="badge badge-sm"></span>
+          </div>
+          <h3 id="current-item-title"></h3>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <span id="current-item-status" class="badge"></span>
+            <div id="voting-actions"></div>
+          </div>
+        </div>
+
+        <!-- Voting Cards -->
+        <div id="voting-cards-area" style="display:none">
+          <h4 class="section-label">🎴 Oyunuzu Seçin</h4>
+          <div id="voting-cards" class="voting-cards"></div>
+        </div>
+
+        <!-- Participants -->
+        <div id="participants-area">
+          <h4 class="section-label">👥 Katılımcılar <span id="participants-count" class="badge badge-sm">0</span></h4>
+          <div id="participants-list" class="participants-grid"></div>
+        </div>
+
+        <!-- Results -->
+        <div id="results-area" style="display:none">
+          <h4 class="section-label">📊 Sonuçlar</h4>
+          <div id="results-summary" class="results-summary"></div>
+          <div id="results-votes" class="results-votes"></div>
+          <div id="results-actions" class="results-actions"></div>
+        </div>
+
+        <!-- Items History -->
+        <div id="items-history-area">
+          <h4 class="section-label">📜 Oylama Geçmişi</h4>
+          <div id="items-history"></div>
+          <div id="no-items" class="empty-state-sm" style="display:none">
+            <p>Henüz oylama yok</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Admin View ── -->
+      <div id="admin-view" class="view">
+        <div class="view-header">
+          <h2>👥 Kullanıcı Yönetimi</h2>
+          <button id="add-user-btn" class="btn btn-primary">+ Yeni Kullanıcı</button>
+        </div>
+        <div id="users-table-container"></div>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- ═══ MODAL ═══ -->
+  <div id="modal-overlay" class="modal-overlay" style="display:none">
+    <div id="modal" class="modal">
+      <div class="modal-header">
+        <h3 id="modal-title"></h3>
+        <button id="modal-close" class="modal-close-btn">&times;</button>
+      </div>
+      <div id="modal-body"></div>
+    </div>
+  </div>
+
+  <!-- Confetti canvas -->
+  <canvas id="confetti-canvas"></canvas>
+
+  <script src="app.js"></script>
+</body>
+</html>

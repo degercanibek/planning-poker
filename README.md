@@ -40,7 +40,7 @@ cd "Planning Poker"
 git init
 git add .
 git commit -m "Planning Poker v2"
-git remote add origin https://github.com/KULLANICI/planning-poker.git
+git remote add origin https://github.com/degercanibek/planning-poker.git
 git push -u origin main
 ```
 

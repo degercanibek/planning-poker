@@ -1,39 +1,39 @@
 # 🃏 Planning Poker
 
-Scrum ekipleri için gerçek zamanlı planlama pokeri uygulaması. Sprint Refinement ve Planning seremonilerinde iş büyüklüklerini oylayın.
+Real-time planning poker app for Scrum teams. Estimate work items during Sprint Refinement and Planning ceremonies.
 
-## ✨ Özellikler
+## ✨ Features
 
-- **Çoklu oylama ölçekleri**: Fibonacci, T-Shirt, 2'nin Kuvvetleri, Efor Menüsü 🍽️
-- **Gerçek zamanlı oylama**: Herkes oyladığında sonuçlar otomatik açılır
-- **Oturum yönetimi**: Oturumlar açılır/kapatılır, geçmiş korunur
-- **Rol tabanlı erişim**: Admin, Oturum Yöneticisi, Oylayıcı
-- **Oylama geçmişi**: Tüm oylamalar ve turlar kayıt altında
-- **Dışa aktarma**: Oturum verilerini JSON olarak indirin
-- **Konsensüs kutlaması**: Herkes aynı oyu verince confetti 🎉
+- **Multiple voting scales**: Fibonacci, T-Shirt, Powers of 2, Effort Menu 🍽️
+- **Real-time voting**: Results are automatically revealed when everyone has voted
+- **Session management**: Open/close sessions, history is preserved
+- **Role-based access**: Admin, Session Manager, Voter
+- **Voting history**: All votes and rounds are recorded
+- **Export**: Download session data as JSON
+- **Consensus celebration**: Confetti when everyone votes the same 🎉
 
-## 🚀 Hızlı Başlangıç (Lokal)
+## 🚀 Quick Start (Local)
 
 ```bash
 npm install
 npm start
 # → http://localhost:3000
-# Giriş: admin / admin
+# Login: admin / admin
 ```
 
-Lokal geliştirmede Redis gerekmez — dosya tabanlı depolama kullanılır.
+No Redis needed for local development — file-based storage is used.
 
-## ☁️ Vercel'e Deploy
+## ☁️ Deploy to Vercel
 
-### 1. Upstash Redis Oluşturun (Ücretsiz)
+### 1. Create Upstash Redis (Free)
 
-1. [console.upstash.com](https://console.upstash.com) adresine gidin
-2. Yeni bir Redis veritabanı oluşturun (region: `eu-west-1` önerilir)
-3. **REST API** sekmesinden şu bilgileri kopyalayın:
+1. Go to [console.upstash.com](https://console.upstash.com)
+2. Create a new Redis database (region: `eu-west-1` recommended)
+3. Copy the following from the **REST API** tab:
    - `UPSTASH_REDIS_REST_URL`
    - `UPSTASH_REDIS_REST_TOKEN`
 
-### 2. GitHub'a Push Edin
+### 2. Push to GitHub
 
 ```bash
 cd "Planning Poker"
@@ -44,64 +44,64 @@ git remote add origin https://github.com/degercanibek/planning-poker.git
 git push -u origin main
 ```
 
-### 3. Vercel'de Projeyi Oluşturun
+### 3. Create Project on Vercel
 
-1. [vercel.com](https://vercel.com) → **New Project** → GitHub reposunu seçin
-2. **Environment Variables** bölümüne ekleyin:
+1. [vercel.com](https://vercel.com) → **New Project** → Select your GitHub repo
+2. Add to **Environment Variables**:
 
-   | Değişken | Değer |
+   | Variable | Value |
    |----------|-------|
-   | `UPSTASH_REDIS_REST_URL` | Upstash'ten aldığınız URL |
-   | `UPSTASH_REDIS_REST_TOKEN` | Upstash'ten aldığınız token |
+   | `UPSTASH_REDIS_REST_URL` | URL from Upstash |
+   | `UPSTASH_REDIS_REST_TOKEN` | Token from Upstash |
 
-3. **Deploy** butonuna basın
+3. Click **Deploy**
 
-> **Not**: İlk deploy'dan sonra varsayılan kullanıcı `admin / admin` ile giriş yapabilirsiniz. Giriş yaptıktan sonra şifreyi değiştirmeniz önerilir.
+> **Note**: After the first deployment, you can log in with the default user `admin / admin`. It's recommended to change the password after logging in.
 
-### Alternatif: Vercel CLI ile Deploy
+### Alternative: Deploy with Vercel CLI
 
 ```bash
 npm i -g vercel
 vercel
-# Environment variables soruları yanıtlayın
+# Answer the environment variable prompts
 vercel --prod
 ```
 
-## 👥 Roller
+## 👥 Roles
 
-| Rol | Yetkiler |
-|-----|----------|
-| **Admin** (👑) | Kullanıcı yönetimi + oturum yönetimi + oylama |
-| **Oturum Yöneticisi** (📋) | Oturum oluşturma/kapatma + oylama başlatma + oylama |
-| **Oylayıcı** (🗳️) | Sadece oylama |
+| Role | Permissions |
+|------|-------------|
+| **Admin** (👑) | User management + session management + voting |
+| **Session Manager** (📋) | Create/close sessions + start voting + vote |
+| **Voter** (🗳️) | Voting only |
 
-## 🎴 Oylama Ölçekleri
+## 🎴 Voting Scales
 
-| Ölçek | Değerler |
-|-------|----------|
+| Scale | Values |
+|-------|--------|
 | 🔢 Fibonacci | 0, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89 |
-| 📊 Değiştirilmiş Fibonacci | 0, ½, 1, 2, 3, 5, 8, 13, 20, 40, 100 |
-| 👕 T-Shirt Bedeni | XS, S, M, L, XL, XXL |
-| ⚡ 2'nin Kuvvetleri | 0, 1, 2, 4, 8, 16, 32, 64 |
-| 🍽️ Efor Menüsü | 🍰🧁🍕🍔🥩🦃🐄🐘🏔️🌋 |
+| 📊 Modified Fibonacci | 0, ½, 1, 2, 3, 5, 8, 13, 20, 40, 100 |
+| 👕 T-Shirt Size | XS, S, M, L, XL, XXL |
+| ⚡ Powers of 2 | 0, 1, 2, 4, 8, 16, 32, 64 |
+| 🍽️ Effort Menu | 🍰🧁🍕🍔🥩🦃🐄🐘🏔️🌋 |
 
-## 🏗️ Mimari
+## 🏗️ Architecture
 
 ```
 Planning Poker/
 ├── api/
 │   └── index.js          ← Express REST API (Vercel serverless)
 ├── lib/
-│   ├── store.js          ← Depolama (Redis / dosya)
-│   └── scales.js         ← Ölçek tanımları
+│   ├── store.js          ← Storage (Redis / file)
+│   └── scales.js         ← Scale definitions
 ├── public/
-│   ├── index.html        ← Tek sayfa uygulama
-│   ├── styles.css        ← UI stilleri
-│   └── app.js            ← İstemci mantığı (polling)
-├── server.js             ← Lokal geliştirme sunucusu
-├── vercel.json           ← Vercel yapılandırması
+│   ├── index.html        ← Single page application
+│   ├── styles.css        ← UI styles
+│   └── app.js            ← Client logic (polling)
+├── server.js             ← Local development server
+├── vercel.json           ← Vercel configuration
 └── package.json
 ```
 
-- **Lokal**: Express sunucu + dosya tabanlı depolama
-- **Vercel**: Serverless fonksiyonlar + Upstash Redis + 2s polling
+- **Local**: Express server + file-based storage
+- **Vercel**: Serverless functions + Upstash Redis + 2s polling

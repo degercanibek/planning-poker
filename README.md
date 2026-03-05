@@ -60,4 +60,3 @@ Planning Poker/
 ```
 
 - **Local**: Express server + file-based storage
-- **Vercel**: Serverless functions + Upstash Redis + 2s polling

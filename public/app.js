@@ -915,25 +915,27 @@ function renderUsers(usersList) {
 function showAddUserModal() {
   const avatars = ['🦊','🐱','🐶','🐼','🦁','🐸','🐵','🦄','🐲','🦅','🐺','🦈','🐍','🦋','🐢','🦉','🐧','🐙'];
   showModal('Add New User', `
-    <div class="input-group">
-      <label>Username</label>
-      <input type="text" id="new-username" placeholder="username" required>
-    </div>
-    <div class="input-group">
-      <label>Display Name</label>
-      <input type="text" id="new-displayname" placeholder="Full Name" required>
-    </div>
-    <div class="input-group">
-      <label>Password</label>
-      <input type="password" id="new-password" placeholder="••••••" required>
-    </div>
-    <div class="input-group">
-      <label>Role</label>
-      <select id="new-role">
-        <option value="voter">🗳️ Voter</option>
-        <option value="session_manager">📋 Session Manager</option>
-        <option value="admin">👑 Admin</option>
-      </select>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px">
+      <div class="input-group">
+        <label>Username</label>
+        <input type="text" id="new-username" placeholder="username" required>
+      </div>
+      <div class="input-group">
+        <label>Display Name</label>
+        <input type="text" id="new-displayname" placeholder="Full Name" required>
+      </div>
+      <div class="input-group">
+        <label>Password</label>
+        <input type="password" id="new-password" placeholder="••••••" required>
+      </div>
+      <div class="input-group">
+        <label>Role</label>
+        <select id="new-role">
+          <option value="voter">🗳️ Voter</option>
+          <option value="session_manager">📋 Session Manager</option>
+          <option value="admin">👑 Admin</option>
+        </select>
+      </div>
     </div>
     <div class="input-group">
       <label>Avatar</label>
@@ -976,25 +978,27 @@ async function createUser() {
 
 function showEditUserModal(id, username, displayName, role, avatar, active) {
   showModal('Edit User', `
-    <div class="input-group">
-      <label>Username</label>
-      <input type="text" value="${esc(username)}" disabled style="opacity:0.5">
-    </div>
-    <div class="input-group">
-      <label>Display Name</label>
-      <input type="text" id="edit-displayname" value="${esc(displayName)}">
-    </div>
-    <div class="input-group">
-      <label>New Password (leave blank to keep current)</label>
-      <input type="password" id="edit-password" placeholder="••••••">
-    </div>
-    <div class="input-group">
-      <label>Role</label>
-      <select id="edit-role">
-        <option value="voter" ${role === 'voter' ? 'selected' : ''}>🗳️ Voter</option>
-        <option value="session_manager" ${role === 'session_manager' ? 'selected' : ''}>📋 Session Manager</option>
-        <option value="admin" ${role === 'admin' ? 'selected' : ''}>👑 Admin</option>
-      </select>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px">
+      <div class="input-group">
+        <label>Username</label>
+        <input type="text" value="${esc(username)}" disabled style="opacity:0.5">
+      </div>
+      <div class="input-group">
+        <label>Display Name</label>
+        <input type="text" id="edit-displayname" value="${esc(displayName)}">
+      </div>
+      <div class="input-group">
+        <label>New Password (leave blank to keep)</label>
+        <input type="password" id="edit-password" placeholder="••••••">
+      </div>
+      <div class="input-group">
+        <label>Role</label>
+        <select id="edit-role">
+          <option value="voter" ${role === 'voter' ? 'selected' : ''}>🗳️ Voter</option>
+          <option value="session_manager" ${role === 'session_manager' ? 'selected' : ''}>📋 Session Manager</option>
+          <option value="admin" ${role === 'admin' ? 'selected' : ''}>👑 Admin</option>
+        </select>
+      </div>
     </div>
     <button class="btn btn-primary btn-block" onclick="updateUser('${id}')">Save</button>
   `);

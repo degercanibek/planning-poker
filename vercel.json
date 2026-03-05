@@ -2,6 +2,11 @@
   "version": 2,
   "buildCommand": "npm install",
   "outputDirectory": "public",
+  "functions": {
+    "api/index.js": {
+      "runtime": "@vercel/node@3"
+    }
+  },
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api" }
   ]

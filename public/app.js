@@ -29,7 +29,7 @@ async function api(method, url, body) {
   if (body) opts.body = JSON.stringify(body);
   const res = await fetch(url, opts);
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'API hatası');
+  if (!res.ok) throw new Error(data.error || 'API error');
   return data;
 }
 
@@ -56,7 +56,7 @@ async function pollSessionState() {
       renderSession();
     }
   } catch (err) {
-    console.error('Polling hatası:', err);
+    console.error('Polling error:', err);
   }
 }
 
@@ -169,7 +169,7 @@ async function loadScales() {
   try {
     state.scales = await api('GET', '/api/scales');
   } catch (err) {
-    console.error('Ölçek bilgisi yüklenemedi:', err);
+    console.error('Failed to load scales:', err);
   }
 }
 
@@ -179,7 +179,7 @@ async function loadSessions() {
     state.sessions = await api('GET', '/api/sessions');
     renderSessions();
   } catch (err) {
-    showNotification('Oturumlar yüklenemedi: ' + err.message, 'error');
+    showNotification('Failed to load sessions: ' + err.message, 'error');
   }
 }
 
@@ -205,21 +205,21 @@ function renderSessions() {
         <div class="session-card-header">
           <span class="session-card-title">${esc(s.name)}</span>
           <span class="badge ${s.status === 'active' ? 'badge-success' : 'badge-danger'}">
-            ${s.status === 'active' ? '🟢 Aktif' : '🔴 Kapalı'}
+            ${s.status === 'active' ? '🟢 Active' : '🔴 Closed'}
           </span>
         </div>
         ${s.description ? `<p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:8px">${esc(s.description)}</p>` : ''}
         <div class="session-card-meta">
           <span>${scaleIcon} ${scaleName}</span>
-          <span>📝 ${s.itemCount} oylama</span>
+          <span>📝 ${s.itemCount} votes</span>
           <span>👤 ${esc(s.creatorName)}</span>
           <span>🕐 ${timeSince}</span>
         </div>
         ${isManager ? `
           <div class="session-card-actions" onclick="event.stopPropagation()">
             ${s.status === 'active'
-              ? `<button class="btn btn-ghost btn-sm" onclick="toggleSessionStatus('${s.id}','closed')">🔒 Kapat</button>`
-              : `<button class="btn btn-ghost btn-sm" onclick="toggleSessionStatus('${s.id}','active')">🔓 Aç</button>`
+              ? `<button class="btn btn-ghost btn-sm" onclick="toggleSessionStatus('${s.id}','closed')">🔒 Close</button>`
+              : `<button class="btn btn-ghost btn-sm" onclick="toggleSessionStatus('${s.id}','active')">🔓 Reopen</button>`
             }
             <button class="btn btn-ghost btn-sm" onclick="deleteSession('${s.id}')">🗑️</button>
             <button class="btn btn-ghost btn-sm" onclick="exportSession('${s.id}','${escAttr(s.name)}')">📥</button>
@@ -234,18 +234,18 @@ async function toggleSessionStatus(id, status) {
   try {
     await api('PUT', `/api/sessions/${id}/status`, { status });
     loadSessions();
-    showNotification(`Oturum ${status === 'active' ? 'açıldı' : 'kapatıldı'}`, 'success');
+    showNotification(`Session ${status === 'active' ? 'reopened' : 'closed'}`, 'success');
   } catch (err) {
     showNotification(err.message, 'error');
   }
 }
 
 async function deleteSession(id) {
-  if (!confirm('Bu oturumu silmek istediğinize emin misiniz?')) return;
+  if (!confirm('Are you sure you want to delete this session?')) return;
   try {
     await api('DELETE', `/api/sessions/${id}`);
     loadSessions();
-    showNotification('Oturum silindi', 'success');
+    showNotification('Session deleted', 'success');
   } catch (err) {
     showNotification(err.message, 'error');
   }
@@ -261,7 +261,7 @@ async function exportSession(id, name) {
     a.download = `planning-poker-${name.replace(/\s+/g, '_')}.json`;
     a.click();
     URL.revokeObjectURL(url);
-    showNotification('Dışa aktarıldı', 'success');
+    showNotification('Exported', 'success');
   } catch (err) {
     showNotification(err.message, 'error');
   }
@@ -281,23 +281,23 @@ function showCreateSessionModal() {
     `;
   }).join('');
 
-  showModal('Yeni Oturum Oluştur', `
+  showModal('Create New Session', `
     <div class="input-group">
-      <label>Oturum Adı</label>
-      <input type="text" id="session-name-input" placeholder="ör: Sprint 14 Refinement" required>
+      <label>Session Name</label>
+      <input type="text" id="session-name-input" placeholder="e.g. Sprint 14 Refinement" required>
     </div>
     <div class="input-group">
-      <label>Açıklama (opsiyonel)</label>
-      <input type="text" id="session-desc-input" placeholder="ör: Backend user stories">
+      <label>Description (optional)</label>
+      <input type="text" id="session-desc-input" placeholder="e.g. Backend user stories">
     </div>
     <div class="input-group">
-      <label>Ölçek</label>
+      <label>Scale</label>
       <div class="scale-options" id="scale-options">
         ${scaleOptions}
       </div>
     </div>
     <input type="hidden" id="selected-scale" value="fibonacci">
-    <button class="btn btn-primary btn-block" onclick="createSession()">🚀 Oturum Oluştur</button>
+    <button class="btn btn-primary btn-block" onclick="createSession()">🚀 Create Session</button>
   `);
   setTimeout(() => document.getElementById('session-name-input')?.focus(), 200);
 }
@@ -312,12 +312,12 @@ async function createSession() {
   const name = document.getElementById('session-name-input').value.trim();
   const description = document.getElementById('session-desc-input').value.trim();
   const scale = document.getElementById('selected-scale').value;
-  if (!name) return showNotification('Oturum adı giriniz', 'warning');
+  if (!name) return showNotification('Please enter a session name', 'warning');
   try {
     await api('POST', '/api/sessions', { name, description, scale });
     hideModal();
     loadSessions();
-    showNotification('Oturum oluşturuldu! 🎉', 'success');
+    showNotification('Session created! 🎉', 'success');
   } catch (err) {
     showNotification(err.message, 'error');
   }
@@ -345,14 +345,14 @@ function renderSession() {
 
   document.getElementById('session-title').textContent = s.name;
   document.getElementById('session-scale-badge').textContent = `${scale.icon || ''} ${scale.name || s.scale}`;
-  document.getElementById('session-status-badge').textContent = s.status === 'active' ? '🟢 Aktif' : '🔴 Kapalı';
+  document.getElementById('session-status-badge').textContent = s.status === 'active' ? '🟢 Active' : '🔴 Closed';
   document.getElementById('session-status-badge').className = `badge ${s.status === 'active' ? 'badge-success' : 'badge-danger'}`;
 
   const controlsEl = document.getElementById('session-controls');
   controlsEl.innerHTML = isManager && s.status === 'active'
-    ? `<button class="btn btn-danger btn-sm" onclick="closeCurrentSession()">🔒 Oturumu Kapat</button>`
+    ? `<button class="btn btn-danger btn-sm" onclick="closeCurrentSession()">🔒 Close Session</button>`
     : isManager && s.status === 'closed'
-    ? `<button class="btn btn-success btn-sm" onclick="reopenCurrentSession()">🔓 Yeniden Aç</button>`
+    ? `<button class="btn btn-success btn-sm" onclick="reopenCurrentSession()">🔓 Reopen</button>`
     : '';
 
   const addArea = document.getElementById('add-item-area');
@@ -368,31 +368,31 @@ function renderSession() {
     const statusEl = document.getElementById('current-item-status');
     const votingActionsEl = document.getElementById('voting-actions');
     if (currentItem.status === 'voting') {
-      statusEl.textContent = '⏳ Oylama devam ediyor...';
+      statusEl.textContent = '⏳ Voting in progress...';
       statusEl.className = 'badge badge-warning';
       const voteCount = Object.keys(currentItem.votes).length;
       if (isManager) {
         votingActionsEl.innerHTML = `
-          <button class="btn btn-primary btn-sm" onclick="revealVotes()" title="Oyları göster">
-            👁️ Oyları Göster ${voteCount > 0 ? '(' + voteCount + ' oy)' : ''}
+          <button class="btn btn-primary btn-sm" onclick="revealVotes()" title="Reveal votes">
+            👁️ Reveal Votes ${voteCount > 0 ? '(' + voteCount + ' votes)' : ''}
           </button>
         `;
       } else {
         votingActionsEl.innerHTML = '';
       }
     } else if (currentItem.status === 'revealed') {
-      statusEl.textContent = '✅ Sonuçlar Açıklandı';
+      statusEl.textContent = '✅ Results Revealed';
       statusEl.className = 'badge badge-success';
       if (isManager) {
         votingActionsEl.innerHTML = `
-          <button class="btn btn-danger btn-sm" onclick="closeVoting()">📥 Geçmişe Gönder</button>
+          <button class="btn btn-danger btn-sm" onclick="closeVoting()">📥 Move to History</button>
         `;
       } else {
         votingActionsEl.innerHTML = '';
       }
     }
     const roundNum = currentItem.rounds ? currentItem.rounds.length + 1 : 1;
-    document.getElementById('round-info').textContent = roundNum > 1 ? `Tur ${roundNum}` : '';
+    document.getElementById('round-info').textContent = roundNum > 1 ? `Round ${roundNum}` : '';
   } else {
     curArea.style.display = 'none';
   }
@@ -424,8 +424,8 @@ function renderPendingItems(pendingItems, isManager, sessionStatus) {
       <span style="font-size:0.9rem"><strong>${idx + 1}.</strong> ${esc(item.title)}</span>
       ${isManager && sessionStatus === 'active' ? `
         <button class="btn btn-success btn-sm" onclick="startVoting('${item.id}')"
-                ${hasActiveVoting ? 'disabled title="Önce mevcut oylamayı sonlandırın"' : ''}>
-          ▶️ Oylamaya Başla
+                ${hasActiveVoting ? 'disabled title="Please finish the current vote first"' : ''}>
+          ▶️ Start Voting
         </button>
       ` : ''}
     </div>
@@ -477,10 +477,10 @@ function renderParticipants(currentItem) {
       if (currentItem.status === 'voting') {
         if (vote && vote.voted) {
           statusClass = 'voted';
-          voteDisplay = '✓ Oylandı';
+          voteDisplay = '✓ Voted';
         } else {
           statusClass = 'not-voted';
-          voteDisplay = '⏳ Bekliyor';
+          voteDisplay = '⏳ Waiting';
         }
       } else if (currentItem.status === 'revealed') {
         statusClass = 'revealed';
@@ -515,11 +515,11 @@ function renderResults(currentItem, scale, isManager) {
     summaryEl.innerHTML = `
       <div class="result-stat ${result.consensus ? 'consensus' : ''}">
         <div class="result-stat-value">${result.consensus ? '🎯' : ''} ${result.average ?? '—'}</div>
-        <div class="result-stat-label">Ortalama</div>
+        <div class="result-stat-label">Average</div>
       </div>
       <div class="result-stat">
         <div class="result-stat-value">${result.median ?? '—'}</div>
-        <div class="result-stat-label">Medyan</div>
+        <div class="result-stat-label">Median</div>
       </div>
       <div class="result-stat">
         <div class="result-stat-value">${result.min ?? '—'}</div>
@@ -527,18 +527,18 @@ function renderResults(currentItem, scale, isManager) {
       </div>
       <div class="result-stat">
         <div class="result-stat-value">${result.max ?? '—'}</div>
-        <div class="result-stat-label">Maksimum</div>
+        <div class="result-stat-label">Maximum</div>
       </div>
       ${result.consensus ? `
         <div class="result-stat consensus" style="grid-column:1/-1">
-          <div class="result-stat-value">🎉 Konsensüs!</div>
-          <div class="result-stat-label">Herkes aynı oyu verdi</div>
+          <div class="result-stat-value">🎉 Consensus!</div>
+          <div class="result-stat-label">Everyone voted the same</div>
         </div>
       ` : ''}
     `;
     if (result.consensus) triggerConfetti();
   } else {
-    summaryEl.innerHTML = '<p style="color:var(--text-muted)">Sonuç hesaplanamadı</p>';
+    summaryEl.innerHTML = '<p style="color:var(--text-muted)">Could not calculate results</p>';
   }
 
   const votes = Object.entries(currentItem.votes);
@@ -552,8 +552,8 @@ function renderResults(currentItem, scale, isManager) {
 
   if (isManager && state.currentSession?.status === 'active') {
     actionsEl.innerHTML = `
-      <button class="btn btn-warning" onclick="revote()">🔄 Yeniden Oyla</button>
-      <button class="btn btn-danger" onclick="closeVoting()">📥 Geçmişe Gönder</button>
+      <button class="btn btn-warning" onclick="revote()">🔄 Revote</button>
+      <button class="btn btn-danger" onclick="closeVoting()">📥 Move to History</button>
     `;
   } else {
     actionsEl.innerHTML = '';
@@ -586,10 +586,10 @@ function renderItemsHistory(completedItems, scale) {
         <div class="history-item-detail" style="margin-top:10px">
           ${item.status === 'revealed' && result ? `
             <div style="margin-bottom:10px;font-size:0.85rem;color:var(--text-secondary)">
-              Ort: <strong style="color:var(--accent)">${result.average}</strong> &nbsp;|&nbsp;
+              Avg: <strong style="color:var(--accent)">${result.average}</strong> &nbsp;|&nbsp;
               Med: <strong>${result.median}</strong> &nbsp;|&nbsp;
               Min: ${result.min} &nbsp;|&nbsp; Max: ${result.max}
-              ${result.consensus ? ' &nbsp;|&nbsp; 🎯 Konsensüs!' : ''}
+              ${result.consensus ? ' &nbsp;|&nbsp; 🎯 Consensus!' : ''}
             </div>
           ` : ''}
           ${voteEntries.length > 0 ? `
@@ -601,10 +601,10 @@ function renderItemsHistory(completedItems, scale) {
                 </span>
               `).join('')}
             </div>
-          ` : '<p style="color:var(--text-muted);font-size:0.85rem">Oy kullanılmamış</p>'}
+          ` : '<p style="color:var(--text-muted);font-size:0.85rem">No votes cast</p>'}
           ${isManager ? `
             <div style="margin-top:10px">
-              <button class="btn btn-warning btn-sm" onclick="event.stopPropagation(); revoteHistoryItem('${item.id}')">🔄 Yeniden Oyla</button>
+              <button class="btn btn-warning btn-sm" onclick="event.stopPropagation(); revoteHistoryItem('${item.id}')">🔄 Revote</button>
             </div>
           ` : ''}
         </div>
@@ -620,11 +620,11 @@ function renderItemsHistory(completedItems, scale) {
           </span>
         </div>
         <div class="history-item-meta">
-          <span>👥 ${voteCount} oy</span>
-          ${result ? `<span>📊 Ort: ${result.average}</span>` : ''}
-          ${roundCount > 1 ? `<span>🔄 ${roundCount} tur</span>` : ''}
-          ${result?.consensus ? '<span>🎯 Konsensüs</span>' : ''}
-          <span style="margin-left:auto;font-size:0.75rem;color:var(--text-muted)">${isExpanded ? '▲ Kapat' : '▼ Detay'}</span>
+          <span>👥 ${voteCount} votes</span>
+          ${result ? `<span>📊 Avg: ${result.average}</span>` : ''}
+          ${roundCount > 1 ? `<span>🔄 ${roundCount} rounds</span>` : ''}
+          ${result?.consensus ? '<span>🎯 Consensus</span>' : ''}
+          <span style="margin-left:auto;font-size:0.75rem;color:var(--text-muted)">${isExpanded ? '▲ Collapse' : '▼ Details'}</span>
         </div>
         ${detailHTML}
       </div>
@@ -679,7 +679,7 @@ async function addItem() {
   try {
     await api('POST', `/api/sessions/${state.currentSessionId}/items`, { title });
     input.value = '';
-    showNotification('İş eklendi, oylama bekliyor', 'success');
+    showNotification('Item added, pending voting', 'success');
   } catch (err) {
     showNotification(err.message, 'error');
   }
@@ -725,7 +725,7 @@ async function closeCurrentSession() {
   if (!s) return;
   try {
     await api('PUT', `/api/sessions/${s.id}/status`, { status: 'closed' });
-    showNotification('Oturum kapatıldı', 'success');
+    showNotification('Session closed', 'success');
   } catch (err) {
     showNotification(err.message, 'error');
   }
@@ -736,7 +736,7 @@ async function reopenCurrentSession() {
   if (!s) return;
   try {
     await api('PUT', `/api/sessions/${s.id}/status`, { status: 'active' });
-    showNotification('Oturum yeniden açıldı', 'success');
+    showNotification('Session reopened', 'success');
   } catch (err) {
     showNotification(err.message, 'error');
   }
@@ -756,12 +756,12 @@ async function closeVoting() {
 
 // ═══ PROFILE & THEMES ══════════════════════════════════════════════════════
 const THEMES = [
-  { id: 'midnight', name: 'Gece Moru', icon: '🌙', color: '#7c3aed' },
-  { id: 'ocean', name: 'Okyanus', icon: '🌊', color: '#3b82f6' },
-  { id: 'forest', name: 'Orman', icon: '🌲', color: '#10b981' },
-  { id: 'sunset', name: 'Gün Batımı', icon: '🌅', color: '#f97316' },
-  { id: 'rose', name: 'Gül', icon: '🌹', color: '#ec4899' },
-  { id: 'light', name: 'Aydınlık', icon: '☀️', color: '#6366f1' },
+  { id: 'midnight', name: 'Midnight', icon: '🌙', color: '#7c3aed' },
+  { id: 'ocean', name: 'Ocean', icon: '🌊', color: '#3b82f6' },
+  { id: 'forest', name: 'Forest', icon: '🌲', color: '#10b981' },
+  { id: 'sunset', name: 'Sunset', icon: '🌅', color: '#f97316' },
+  { id: 'rose', name: 'Rose', icon: '🌹', color: '#ec4899' },
+  { id: 'light', name: 'Light', icon: '☀️', color: '#6366f1' },
 ];
 
 function applyTheme(theme) {
@@ -778,9 +778,9 @@ function showProfileModal() {
   const avatars = ['👑','🦊','🐱','🐶','🐼','🦁','🐸','🐵','🦄','🐲','🦅','🐺','🦈','🐍','🦋','🐢','🦉','🐧','🐙','🎯','🚀','⚡','🔥','💎','🎸','🎮','🏆','🌟'];
   const currentTheme = u.theme || 'midnight';
 
-  showModal('👤 Profil Ayarları', `
+  showModal('👤 Profile Settings', `
     <div class="input-group">
-      <label>Görünen Ad</label>
+      <label>Display Name</label>
       <input type="text" id="profile-displayname" value="${esc(u.displayName)}">
     </div>
     <div class="input-group">
@@ -794,7 +794,7 @@ function showProfileModal() {
       <input type="hidden" id="profile-avatar" value="${u.avatar}">
     </div>
     <div class="input-group">
-      <label>Tema</label>
+      <label>Theme</label>
       <div class="theme-grid">
         ${THEMES.map(t => `
           <div class="theme-option ${t.id === currentTheme ? 'selected' : ''}" onclick="selectTheme(this, '${t.id}')" data-theme="${t.id}">
@@ -805,18 +805,18 @@ function showProfileModal() {
       </div>
       <input type="hidden" id="profile-theme" value="${currentTheme}">
     </div>
-    <button class="btn btn-primary btn-block" onclick="saveProfile()">💾 Profili Kaydet</button>
+    <button class="btn btn-primary btn-block" onclick="saveProfile()">💾 Save Profile</button>
     <hr style="border-color:var(--border);margin:20px 0">
-    <h4 style="margin-bottom:12px;font-size:0.95rem">🔒 Şifre Değiştir</h4>
+    <h4 style="margin-bottom:12px;font-size:0.95rem">🔒 Change Password</h4>
     <div class="input-group">
-      <label>Mevcut Şifre</label>
+      <label>Current Password</label>
       <input type="password" id="profile-current-pw" placeholder="••••••">
     </div>
     <div class="input-group">
-      <label>Yeni Şifre</label>
+      <label>New Password</label>
       <input type="password" id="profile-new-pw" placeholder="••••••">
     </div>
-    <button class="btn btn-warning btn-block" onclick="changePassword()">🔑 Şifre Değiştir</button>
+    <button class="btn btn-warning btn-block" onclick="changePassword()">🔑 Change Password</button>
   `);
 }
 
@@ -837,7 +837,7 @@ async function saveProfile() {
   const displayName = document.getElementById('profile-displayname').value.trim();
   const avatar = document.getElementById('profile-avatar').value;
   const theme = document.getElementById('profile-theme').value;
-  if (!displayName) return showNotification('Görünen ad boş olamaz', 'warning');
+  if (!displayName) return showNotification('Display name cannot be empty', 'warning');
   try {
     const data = await api('PUT', '/api/me', { displayName, avatar, theme });
     state.user.displayName = data.displayName;
@@ -846,7 +846,7 @@ async function saveProfile() {
     document.getElementById('user-badge').textContent = `${state.user.avatar} ${state.user.displayName}`;
     applyTheme(theme);
     hideModal();
-    showNotification('Profil güncellendi! ✨', 'success');
+    showNotification('Profile updated! ✨', 'success');
   } catch (err) {
     showNotification(err.message, 'error');
   }
@@ -855,12 +855,12 @@ async function saveProfile() {
 async function changePassword() {
   const currentPassword = document.getElementById('profile-current-pw').value;
   const newPassword = document.getElementById('profile-new-pw').value;
-  if (!currentPassword || !newPassword) return showNotification('Her iki şifre alanını doldurunuz', 'warning');
+  if (!currentPassword || !newPassword) return showNotification('Please fill in both password fields', 'warning');
   try {
     await api('PUT', '/api/me/password', { currentPassword, newPassword });
     document.getElementById('profile-current-pw').value = '';
     document.getElementById('profile-new-pw').value = '';
-    showNotification('Şifre değiştirildi! 🔑', 'success');
+    showNotification('Password changed! 🔑', 'success');
   } catch (err) {
     showNotification(err.message, 'error');
   }
@@ -872,13 +872,13 @@ async function loadUsers() {
     const usersList = await api('GET', '/api/users');
     renderUsers(usersList);
   } catch (err) {
-    showNotification('Kullanıcılar yüklenemedi: ' + err.message, 'error');
+    showNotification('Failed to load users: ' + err.message, 'error');
   }
 }
 
 function renderUsers(usersList) {
   const container = document.getElementById('users-table-container');
-  const roleLabels = { admin: '👑 Admin', session_manager: '📋 Oturum Yöneticisi', voter: '🗳️ Oylayıcı' };
+  const roleLabels = { admin: '👑 Admin', session_manager: '📋 Session Manager', voter: '🗳️ Voter' };
   const roleColors = { admin: 'badge-danger', session_manager: 'badge-warning', voter: 'badge-info' };
 
   container.innerHTML = `
@@ -886,11 +886,11 @@ function renderUsers(usersList) {
       <thead>
         <tr>
           <th></th>
-          <th>Kullanıcı Adı</th>
-          <th>Görünen Ad</th>
-          <th>Rol</th>
-          <th>Durum</th>
-          <th>İşlemler</th>
+          <th>Username</th>
+          <th>Display Name</th>
+          <th>Role</th>
+          <th>Status</th>
+          <th>Actions</th>
         </tr>
       </thead>
       <tbody>
@@ -900,7 +900,7 @@ function renderUsers(usersList) {
             <td><strong>${esc(u.username)}</strong></td>
             <td>${esc(u.displayName)}</td>
             <td><span class="badge role-badge ${roleColors[u.role] || ''}">${roleLabels[u.role] || u.role}</span></td>
-            <td><span class="badge ${u.active ? 'badge-success' : 'badge-danger'}">${u.active ? 'Aktif' : 'Pasif'}</span></td>
+            <td><span class="badge ${u.active ? 'badge-success' : 'badge-danger'}">${u.active ? 'Active' : 'Inactive'}</span></td>
             <td class="user-actions">
               <button class="btn btn-ghost btn-sm" onclick="showEditUserModal('${u.id}','${escAttr(u.username)}','${escAttr(u.displayName)}','${u.role}','${u.avatar}',${u.active})">✏️</button>
               ${u.username !== 'admin' ? `<button class="btn btn-ghost btn-sm" onclick="toggleUserActive('${u.id}',${!u.active})">${u.active ? '🚫' : '✅'}</button>` : ''}
@@ -914,24 +914,24 @@ function renderUsers(usersList) {
 
 function showAddUserModal() {
   const avatars = ['🦊','🐱','🐶','🐼','🦁','🐸','🐵','🦄','🐲','🦅','🐺','🦈','🐍','🦋','🐢','🦉','🐧','🐙'];
-  showModal('Yeni Kullanıcı Ekle', `
+  showModal('Add New User', `
     <div class="input-group">
-      <label>Kullanıcı Adı</label>
-      <input type="text" id="new-username" placeholder="kullanici_adi" required>
+      <label>Username</label>
+      <input type="text" id="new-username" placeholder="username" required>
     </div>
     <div class="input-group">
-      <label>Görünen Ad</label>
-      <input type="text" id="new-displayname" placeholder="Ad Soyad" required>
+      <label>Display Name</label>
+      <input type="text" id="new-displayname" placeholder="Full Name" required>
     </div>
     <div class="input-group">
-      <label>Şifre</label>
+      <label>Password</label>
       <input type="password" id="new-password" placeholder="••••••" required>
     </div>
     <div class="input-group">
-      <label>Rol</label>
+      <label>Role</label>
       <select id="new-role">
-        <option value="voter">🗳️ Oylayıcı</option>
-        <option value="session_manager">📋 Oturum Yöneticisi</option>
+        <option value="voter">🗳️ Voter</option>
+        <option value="session_manager">📋 Session Manager</option>
         <option value="admin">👑 Admin</option>
       </select>
     </div>
@@ -945,7 +945,7 @@ function showAddUserModal() {
       </div>
       <input type="hidden" id="new-avatar" value="${avatars[0]}">
     </div>
-    <button class="btn btn-primary btn-block" onclick="createUser()">Kullanıcı Oluştur</button>
+    <button class="btn btn-primary btn-block" onclick="createUser()">Create User</button>
   `);
   setTimeout(() => document.getElementById('new-username')?.focus(), 200);
 }
@@ -963,40 +963,40 @@ async function createUser() {
   const role = document.getElementById('new-role').value;
   const avatar = document.getElementById('new-avatar').value;
   if (!username || !displayName || !password)
-    return showNotification('Tüm alanları doldurunuz', 'warning');
+    return showNotification('Please fill in all fields', 'warning');
   try {
     await api('POST', '/api/users', { username, displayName, password, role, avatar });
     hideModal();
     loadUsers();
-    showNotification('Kullanıcı oluşturuldu! 🎉', 'success');
+    showNotification('User created! 🎉', 'success');
   } catch (err) {
     showNotification(err.message, 'error');
   }
 }
 
 function showEditUserModal(id, username, displayName, role, avatar, active) {
-  showModal('Kullanıcı Düzenle', `
+  showModal('Edit User', `
     <div class="input-group">
-      <label>Kullanıcı Adı</label>
+      <label>Username</label>
       <input type="text" value="${esc(username)}" disabled style="opacity:0.5">
     </div>
     <div class="input-group">
-      <label>Görünen Ad</label>
+      <label>Display Name</label>
       <input type="text" id="edit-displayname" value="${esc(displayName)}">
     </div>
     <div class="input-group">
-      <label>Yeni Şifre (boş bırakılırsa değişmez)</label>
+      <label>New Password (leave blank to keep current)</label>
       <input type="password" id="edit-password" placeholder="••••••">
     </div>
     <div class="input-group">
-      <label>Rol</label>
+      <label>Role</label>
       <select id="edit-role">
-        <option value="voter" ${role === 'voter' ? 'selected' : ''}>🗳️ Oylayıcı</option>
-        <option value="session_manager" ${role === 'session_manager' ? 'selected' : ''}>📋 Oturum Yöneticisi</option>
+        <option value="voter" ${role === 'voter' ? 'selected' : ''}>🗳️ Voter</option>
+        <option value="session_manager" ${role === 'session_manager' ? 'selected' : ''}>📋 Session Manager</option>
         <option value="admin" ${role === 'admin' ? 'selected' : ''}>👑 Admin</option>
       </select>
     </div>
-    <button class="btn btn-primary btn-block" onclick="updateUser('${id}')">Kaydet</button>
+    <button class="btn btn-primary btn-block" onclick="updateUser('${id}')">Save</button>
   `);
 }
 
@@ -1010,7 +1010,7 @@ async function updateUser(id) {
     await api('PUT', `/api/users/${id}`, body);
     hideModal();
     loadUsers();
-    showNotification('Kullanıcı güncellendi', 'success');
+    showNotification('User updated', 'success');
   } catch (err) {
     showNotification(err.message, 'error');
   }
@@ -1020,7 +1020,7 @@ async function toggleUserActive(id, active) {
   try {
     await api('PUT', `/api/users/${id}`, { active });
     loadUsers();
-    showNotification(active ? 'Kullanıcı aktifleştirildi' : 'Kullanıcı pasifleştirildi', 'success');
+    showNotification(active ? 'User activated' : 'User deactivated', 'success');
   } catch (err) {
     showNotification(err.message, 'error');
   }
@@ -1107,13 +1107,13 @@ function escAttr(str) {
 function timeAgo(iso) {
   const diff = Date.now() - new Date(iso).getTime();
   const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'az önce';
-  if (mins < 60) return `${mins} dk önce`;
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
   const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours} saat önce`;
+  if (hours < 24) return `${hours}h ago`;
   const days = Math.floor(hours / 24);
-  if (days < 30) return `${days} gün önce`;
-  return new Date(iso).toLocaleDateString('tr-TR');
+  if (days < 30) return `${days}d ago`;
+  return new Date(iso).toLocaleDateString('en-US');
 }
 
 // ═══ EVENT BINDINGS ═════════════════════════════════════════════════════════

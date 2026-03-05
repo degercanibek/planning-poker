@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="tr">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -20,15 +20,16 @@
         <p class="login-subtitle">Scrum Estimation Made Fun</p>
         <form id="login-form">
           <div class="input-group">
-            <label for="login-username">Kullanıcı Adı</label>
-            <input type="text" id="login-username" placeholder="kullanici_adi" required autocomplete="username">
+            <label for="login-username">Username</label>
+            <input type="text" id="login-username" placeholder="username" required autocomplete="username">
           </div>
           <div class="input-group">
-            <label for="login-password">Şifre</label>
+            <label for="login-password">Password</label>
             <input type="password" id="login-password" placeholder="••••••" required autocomplete="current-password">
           </div>
-          <button type="submit" class="btn btn-primary btn-block" id="login-btn">Giriş Yap</button>
+          <button type="submit" class="btn btn-primary btn-block" id="login-btn">Sign In</button>
           <p id="login-error" class="error-text"></p>
+          <p style="text-align:center;margin-top:16px"><a href="/guide.html" target="_blank" style="color:#8888aa;font-size:0.85rem;text-decoration:none">📖 User Guide</a></p>
         </form>
       </div>
     </div>
@@ -43,15 +44,18 @@
       </div>
       <nav class="header-nav">
         <button class="nav-btn active" data-view="dashboard">
-          <span class="nav-icon">📋</span><span class="nav-label">Oturumlar</span>
+          <span class="nav-icon">📋</span><span class="nav-label">Sessions</span>
         </button>
         <button class="nav-btn" data-view="admin" id="admin-nav-btn" style="display:none">
-          <span class="nav-icon">👥</span><span class="nav-label">Yönetim</span>
+          <span class="nav-icon">👥</span><span class="nav-label">Admin</span>
         </button>
+        <a href="/guide.html" target="_blank" class="nav-btn" title="User Guide" style="text-decoration:none">
+          <span class="nav-icon">📖</span><span class="nav-label">Guide</span>
+        </a>
       </nav>
       <div class="header-right">
-        <span id="user-badge" class="user-badge" onclick="showProfileModal()" style="cursor:pointer" title="Profil Ayarları"></span>
-        <button id="logout-btn" class="btn btn-ghost btn-sm">Çıkış</button>
+        <span id="user-badge" class="user-badge" onclick="showProfileModal()" style="cursor:pointer" title="Profile Settings"></span>
+        <button id="logout-btn" class="btn btn-ghost btn-sm">Logout</button>
       </div>
     </header>
 
@@ -61,17 +65,17 @@
       <!-- ── Dashboard View ── -->
       <div id="dashboard-view" class="view active">
         <div class="view-header">
-          <h2>📋 Oturumlar</h2>
-          <button id="create-session-btn" class="btn btn-primary" style="display:none">+ Yeni Oturum</button>
+          <h2>📋 Sessions</h2>
+          <button id="create-session-btn" class="btn btn-primary" style="display:none">+ New Session</button>
         </div>
         <div class="tabs">
-          <button class="tab active" data-tab="active">🟢 Aktif</button>
-          <button class="tab" data-tab="closed">🔴 Kapalı</button>
+          <button class="tab active" data-tab="active">🟢 Active</button>
+          <button class="tab" data-tab="closed">🔴 Closed</button>
         </div>
         <div id="sessions-grid" class="card-grid"></div>
         <div id="no-sessions" class="empty-state" style="display:none">
           <div class="empty-icon">🎯</div>
-          <p>Henüz oturum yok</p>
+          <p>No sessions yet</p>
         </div>
       </div>
 
@@ -79,7 +83,7 @@
       <div id="session-view" class="view">
         <!-- Toolbar -->
         <div id="session-toolbar">
-          <button id="back-to-dashboard" class="btn btn-ghost">← Geri</button>
+          <button id="back-to-dashboard" class="btn btn-ghost">← Back</button>
           <div class="session-title-area">
             <h2 id="session-title"></h2>
             <span id="session-scale-badge" class="badge"></span>
@@ -91,21 +95,21 @@
         <!-- Add Item -->
         <div id="add-item-area" class="card" style="display:none">
           <div class="add-item-row">
-            <input type="text" id="new-item-input" placeholder="İş başlığını girin... (ör: US-123 Login ekranı)" class="input-lg">
-            <button id="add-item-btn" class="btn btn-primary">� Listeye Ekle</button>
+            <input type="text" id="new-item-input" placeholder="Enter item title... (e.g. US-123 Login screen)" class="input-lg">
+            <button id="add-item-btn" class="btn btn-primary">➕ Add to List</button>
           </div>
         </div>
 
         <!-- Pending Items Queue -->
         <div id="pending-items-area" style="display:none">
-          <h4 class="section-label">📋 Oylama Bekleyenler <span id="pending-count" class="badge badge-sm">0</span></h4>
+          <h4 class="section-label">📋 Pending Items <span id="pending-count" class="badge badge-sm">0</span></h4>
           <div id="pending-items-list"></div>
         </div>
 
         <!-- Current Item -->
         <div id="current-item-area" class="card" style="display:none">
           <div class="current-item-header">
-            <span class="current-item-label">Güncel Oylama</span>
+            <span class="current-item-label">Current Vote</span>
             <span id="round-info" class="badge badge-sm"></span>
           </div>
           <h3 id="current-item-title"></h3>
@@ -117,19 +121,19 @@
 
         <!-- Voting Cards -->
         <div id="voting-cards-area" style="display:none">
-          <h4 class="section-label">🎴 Oyunuzu Seçin</h4>
+          <h4 class="section-label">🌴 Cast Your Vote</h4>
           <div id="voting-cards" class="voting-cards"></div>
         </div>
 
         <!-- Participants -->
         <div id="participants-area">
-          <h4 class="section-label">👥 Katılımcılar <span id="participants-count" class="badge badge-sm">0</span></h4>
+          <h4 class="section-label">👥 Participants <span id="participants-count" class="badge badge-sm">0</span></h4>
           <div id="participants-list" class="participants-grid"></div>
         </div>
 
         <!-- Results -->
         <div id="results-area" style="display:none">
-          <h4 class="section-label">📊 Sonuçlar</h4>
+          <h4 class="section-label">📊 Results</h4>
           <div id="results-summary" class="results-summary"></div>
           <div id="results-votes" class="results-votes"></div>
           <div id="results-actions" class="results-actions"></div>
@@ -137,10 +141,10 @@
 
         <!-- Items History -->
         <div id="items-history-area">
-          <h4 class="section-label">📜 Oylama Geçmişi</h4>
+          <h4 class="section-label">📜 Voting History</h4>
           <div id="items-history"></div>
           <div id="no-items" class="empty-state-sm" style="display:none">
-            <p>Henüz oylama yok</p>
+            <p>No votes yet</p>
           </div>
         </div>
       </div>
@@ -148,8 +152,8 @@
       <!-- ── Admin View ── -->
       <div id="admin-view" class="view">
         <div class="view-header">
-          <h2>👥 Kullanıcı Yönetimi</h2>
-          <button id="add-user-btn" class="btn btn-primary">+ Yeni Kullanıcı</button>
+          <h2>👥 User Management</h2>
+          <button id="add-user-btn" class="btn btn-primary">+ New User</button>
         </div>
         <div id="users-table-container"></div>
       </div>

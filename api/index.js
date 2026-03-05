@@ -70,18 +70,18 @@ function getActiveParticipants(pings) {
 // ─── Auth Middleware ─────────────────────────────────────────────────────────
 async function authenticate(req, res, next) {
   const token = req.headers.authorization?.replace('Bearer ', '');
-  if (!token) return res.status(401).json({ error: 'Yetkisiz erişim' });
+  if (!token) return res.status(401).json({ error: 'Unauthorized' });
   const userId = await store.get(`pp:token:${token}`);
-  if (!userId) return res.status(401).json({ error: 'Oturum süresi dolmuş' });
+  if (!userId) return res.status(401).json({ error: 'Session expired' });
   const users = await getUsers();
   req.user = users.find(u => u.id === userId);
-  if (!req.user) return res.status(401).json({ error: 'Kullanıcı bulunamadı' });
+  if (!req.user) return res.status(401).json({ error: 'User not found' });
   next();
 }
 
 function requireRole(...roles) {
   return (req, res, next) => {
-    if (!roles.includes(req.user.role)) return res.status(403).json({ error: 'Yetkiniz yok' });
+    if (!roles.includes(req.user.role)) return res.status(403).json({ error: 'Insufficient permissions' });
     next();
   };
 }
@@ -95,7 +95,7 @@ app.post('/api/login', h(async (req, res) => {
   const users = await getUsers();
   const user = users.find(u => u.username === username && u.active);
   if (!user || user.passwordHash !== hashPassword(password))
-    return res.status(401).json({ error: 'Geçersiz kullanıcı adı veya şifre' });
+    return res.status(401).json({ error: 'Invalid username or password' });
   const token = generateToken();
   await store.set(`pp:token:${token}`, user.id, { ex: 86400 }); // 24h
   res.json({
@@ -121,7 +121,7 @@ app.get('/api/scales', (req, res) => res.json(SCALES));
 app.put('/api/me', authenticate, h(async (req, res) => {
   const users = await getUsers();
   const user = users.find(u => u.id === req.user.id);
-  if (!user) return res.status(404).json({ error: 'Kullanıcı bulunamadı' });
+  if (!user) return res.status(404).json({ error: 'User not found' });
   const { displayName, avatar, theme } = req.body;
   if (displayName !== undefined && displayName.trim()) user.displayName = displayName.trim();
   if (avatar !== undefined) user.avatar = avatar;
@@ -133,11 +133,11 @@ app.put('/api/me', authenticate, h(async (req, res) => {
 app.put('/api/me/password', authenticate, h(async (req, res) => {
   const users = await getUsers();
   const user = users.find(u => u.id === req.user.id);
-  if (!user) return res.status(404).json({ error: 'Kullanıcı bulunamadı' });
+  if (!user) return res.status(404).json({ error: 'User not found' });
   const { currentPassword, newPassword } = req.body;
-  if (!currentPassword || !newPassword) return res.status(400).json({ error: 'Mevcut ve yeni şifre zorunlu' });
-  if (user.passwordHash !== hashPassword(currentPassword)) return res.status(400).json({ error: 'Mevcut şifre yanlış' });
-  if (newPassword.length < 3) return res.status(400).json({ error: 'Yeni şifre en az 3 karakter olmalı' });
+  if (!currentPassword || !newPassword) return res.status(400).json({ error: 'Current and new password are required' });
+  if (user.passwordHash !== hashPassword(currentPassword)) return res.status(400).json({ error: 'Current password is incorrect' });
+  if (newPassword.length < 3) return res.status(400).json({ error: 'New password must be at least 3 characters' });
   user.passwordHash = hashPassword(newPassword);
   await saveUsers(users);
   res.json({ ok: true });
@@ -155,10 +155,10 @@ app.get('/api/users', authenticate, requireRole('admin'), h(async (req, res) => 
 app.post('/api/users', authenticate, requireRole('admin'), h(async (req, res) => {
   const { username, displayName, password, role, avatar } = req.body;
   if (!username || !password || !displayName)
-    return res.status(400).json({ error: 'Zorunlu alanlar eksik' });
+    return res.status(400).json({ error: 'Required fields are missing' });
   const users = await getUsers();
   if (users.some(u => u.username === username))
-    return res.status(400).json({ error: 'Bu kullanıcı adı zaten mevcut' });
+    return res.status(400).json({ error: 'This username already exists' });
   const newUser = {
     id: generateId(), username, displayName,
     passwordHash: hashPassword(password),
@@ -174,7 +174,7 @@ app.post('/api/users', authenticate, requireRole('admin'), h(async (req, res) =>
 app.put('/api/users/:id', authenticate, requireRole('admin'), h(async (req, res) => {
   const users = await getUsers();
   const user = users.find(u => u.id === req.params.id);
-  if (!user) return res.status(404).json({ error: 'Kullanıcı bulunamadı' });
+  if (!user) return res.status(404).json({ error: 'User not found' });
   const { displayName, role, avatar, active, password } = req.body;
   if (displayName !== undefined) user.displayName = displayName;
   if (role) user.role = role;
@@ -188,8 +188,8 @@ app.put('/api/users/:id', authenticate, requireRole('admin'), h(async (req, res)
 app.delete('/api/users/:id', authenticate, requireRole('admin'), h(async (req, res) => {
   const users = await getUsers();
   const user = users.find(u => u.id === req.params.id);
-  if (!user) return res.status(404).json({ error: 'Kullanıcı bulunamadı' });
-  if (user.username === 'admin') return res.status(400).json({ error: 'Admin kullanıcı silinemez' });
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  if (user.username === 'admin') return res.status(400).json({ error: 'Admin user cannot be deleted' });
   user.active = false;
   await saveUsers(users);
   res.json({ ok: true });
@@ -209,7 +209,7 @@ app.get('/api/sessions', authenticate, h(async (req, res) => {
 
 app.post('/api/sessions', authenticate, requireRole('admin', 'session_manager'), h(async (req, res) => {
   const { name, description, scale } = req.body;
-  if (!name) return res.status(400).json({ error: 'Oturum adı zorunlu' });
+  if (!name) return res.status(400).json({ error: 'Session name is required' });
   const sessions = await getSessions();
   const session = {
     id: generateId(), name, description: description || '',
@@ -225,7 +225,7 @@ app.post('/api/sessions', authenticate, requireRole('admin', 'session_manager'),
 app.put('/api/sessions/:id/status', authenticate, requireRole('admin', 'session_manager'), h(async (req, res) => {
   const sessions = await getSessions();
   const session = sessions.find(s => s.id === req.params.id);
-  if (!session) return res.status(404).json({ error: 'Oturum bulunamadı' });
+  if (!session) return res.status(404).json({ error: 'Session not found' });
   const { status } = req.body;
   if (status === 'closed') { session.status = 'closed'; session.closedAt = new Date().toISOString(); }
   else if (status === 'active') { session.status = 'active'; session.closedAt = null; }
@@ -236,7 +236,7 @@ app.put('/api/sessions/:id/status', authenticate, requireRole('admin', 'session_
 app.delete('/api/sessions/:id', authenticate, requireRole('admin', 'session_manager'), h(async (req, res) => {
   const sessions = await getSessions();
   const idx = sessions.findIndex(s => s.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ error: 'Oturum bulunamadı' });
+  if (idx === -1) return res.status(404).json({ error: 'Session not found' });
   sessions.splice(idx, 1);
   await saveSessions(sessions);
   // Clean up pings
@@ -248,7 +248,7 @@ app.delete('/api/sessions/:id', authenticate, requireRole('admin', 'session_mana
 app.get('/api/sessions/:id', authenticate, h(async (req, res) => {
   const sessions = await getSessions();
   const session = sessions.find(s => s.id === req.params.id);
-  if (!session) return res.status(404).json({ error: 'Oturum bulunamadı' });
+  if (!session) return res.status(404).json({ error: 'Session not found' });
   res.json(session);
 }));
 
@@ -256,7 +256,7 @@ app.get('/api/sessions/:id', authenticate, h(async (req, res) => {
 app.get('/api/sessions/:id/export', authenticate, h(async (req, res) => {
   const sessions = await getSessions();
   const session = sessions.find(s => s.id === req.params.id);
-  if (!session) return res.status(404).json({ error: 'Oturum bulunamadı' });
+  if (!session) return res.status(404).json({ error: 'Session not found' });
   const users = await getUsers();
   const exportData = {
     name: session.name, description: session.description,
@@ -280,7 +280,7 @@ app.get('/api/sessions/:id/export', authenticate, h(async (req, res) => {
 app.get('/api/sessions/:id/state', authenticate, h(async (req, res) => {
   const sessions = await getSessions();
   const session = sessions.find(s => s.id === req.params.id);
-  if (!session) return res.status(404).json({ error: 'Oturum bulunamadı' });
+  if (!session) return res.status(404).json({ error: 'Session not found' });
 
   // Update participant ping
   const pings = (await store.get(`pp:pings:${session.id}`)) || {};
@@ -333,9 +333,9 @@ app.get('/api/sessions/:id/state', authenticate, h(async (req, res) => {
 app.post('/api/sessions/:id/items', authenticate, requireRole('admin', 'session_manager'), h(async (req, res) => {
   const sessions = await getSessions();
   const session = sessions.find(s => s.id === req.params.id);
-  if (!session || session.status !== 'active') return res.status(400).json({ error: 'Oturum aktif değil' });
+  if (!session || session.status !== 'active') return res.status(400).json({ error: 'Session is not active' });
   const { title } = req.body;
-  if (!title) return res.status(400).json({ error: 'Başlık zorunlu' });
+  if (!title) return res.status(400).json({ error: 'Title is required' });
 
   const item = {
     id: generateId(), title, status: 'pending',
@@ -351,16 +351,16 @@ app.post('/api/sessions/:id/items', authenticate, requireRole('admin', 'session_
 app.post('/api/sessions/:id/items/:itemId/start', authenticate, requireRole('admin', 'session_manager'), h(async (req, res) => {
   const sessions = await getSessions();
   const session = sessions.find(s => s.id === req.params.id);
-  if (!session || session.status !== 'active') return res.status(400).json({ error: 'Oturum aktif değil' });
+  if (!session || session.status !== 'active') return res.status(400).json({ error: 'Session is not active' });
   const item = session.items.find(i => i.id === req.params.itemId);
-  if (!item) return res.status(404).json({ error: 'İş bulunamadı' });
+  if (!item) return res.status(404).json({ error: 'Item not found' });
 
   // If there's a current voting item, keep it as-is (don't auto-reveal)
   // Admin must manually reveal or it stays in voting
   if (session.currentItemId) {
     const prev = session.items.find(i => i.id === session.currentItemId);
     if (prev && prev.status === 'voting') {
-      return res.status(400).json({ error: 'Önce mevcut oylamayı sonlandırın' });
+      return res.status(400).json({ error: 'Please finish the current vote first' });
     }
   }
 
@@ -376,12 +376,12 @@ app.post('/api/sessions/:id/items/:itemId/start', authenticate, requireRole('adm
 app.post('/api/sessions/:id/items/:itemId/vote', authenticate, h(async (req, res) => {
   const sessions = await getSessions();
   const session = sessions.find(s => s.id === req.params.id);
-  if (!session || session.status !== 'active') return res.status(400).json({ error: 'Oturum aktif değil' });
+  if (!session || session.status !== 'active') return res.status(400).json({ error: 'Session is not active' });
   const item = session.items.find(i => i.id === req.params.itemId);
-  if (!item || item.status !== 'voting') return res.status(400).json({ error: 'Bu iş için oylama bitti' });
+  if (!item || item.status !== 'voting') return res.status(400).json({ error: 'Voting has ended for this item' });
   const { value } = req.body;
   const scale = SCALES[session.scale];
-  if (!scale || !scale.values.includes(value)) return res.status(400).json({ error: 'Geçersiz oy' });
+  if (!scale || !scale.values.includes(value)) return res.status(400).json({ error: 'Invalid vote' });
 
   item.votes[req.user.id] = { value, timestamp: new Date().toISOString() };
 
@@ -393,9 +393,9 @@ app.post('/api/sessions/:id/items/:itemId/vote', authenticate, h(async (req, res
 app.post('/api/sessions/:id/items/:itemId/reveal', authenticate, requireRole('admin', 'session_manager'), h(async (req, res) => {
   const sessions = await getSessions();
   const session = sessions.find(s => s.id === req.params.id);
-  if (!session) return res.status(404).json({ error: 'Oturum bulunamadı' });
+  if (!session) return res.status(404).json({ error: 'Session not found' });
   const item = session.items.find(i => i.id === req.params.itemId);
-  if (!item || item.status !== 'voting') return res.status(400).json({ error: 'Zaten açıklanmış' });
+  if (!item || item.status !== 'voting') return res.status(400).json({ error: 'Already revealed' });
 
   item.status = 'revealed';
   computeResult(item, session.scale);
@@ -407,9 +407,9 @@ app.post('/api/sessions/:id/items/:itemId/reveal', authenticate, requireRole('ad
 app.post('/api/sessions/:id/items/:itemId/close', authenticate, requireRole('admin', 'session_manager'), h(async (req, res) => {
   const sessions = await getSessions();
   const session = sessions.find(s => s.id === req.params.id);
-  if (!session) return res.status(404).json({ error: 'Oturum bulunamadı' });
+  if (!session) return res.status(404).json({ error: 'Session not found' });
   const item = session.items.find(i => i.id === req.params.itemId);
-  if (!item) return res.status(404).json({ error: 'İş bulunamadı' });
+  if (!item) return res.status(404).json({ error: 'Item not found' });
   if (session.currentItemId === item.id) {
     session.currentItemId = null;
   }
@@ -421,9 +421,9 @@ app.post('/api/sessions/:id/items/:itemId/close', authenticate, requireRole('adm
 app.post('/api/sessions/:id/items/:itemId/revote', authenticate, requireRole('admin', 'session_manager'), h(async (req, res) => {
   const sessions = await getSessions();
   const session = sessions.find(s => s.id === req.params.id);
-  if (!session || session.status !== 'active') return res.status(400).json({ error: 'Oturum aktif değil' });
+  if (!session || session.status !== 'active') return res.status(400).json({ error: 'Session is not active' });
   const item = session.items.find(i => i.id === req.params.itemId);
-  if (!item) return res.status(404).json({ error: 'İş bulunamadı' });
+  if (!item) return res.status(404).json({ error: 'Item not found' });
 
   if (Object.keys(item.votes).length > 0) {
     item.rounds.push({ votes: { ...item.votes }, result: item.result ? { ...item.result } : null });
@@ -447,7 +447,7 @@ app.post('/api/sessions/:id/leave', authenticate, h(async (req, res) => {
 // ── Error handler ───────────────────────────────────────────────────────────
 app.use((err, req, res, _next) => {
   console.error('API Error:', err);
-  res.status(500).json({ error: 'Sunucu hatası' });
+  res.status(500).json({ error: 'Server error' });
 });
 
 module.exports = app;

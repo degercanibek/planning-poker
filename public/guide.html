@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>User Guide — Planning Poker 🃏</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🃏</text></svg>">
+  <style>
+    :root {
+      --bg: #0a0a1a;
+      --surface: #111128;
+      --card: #1a1a3e;
+      --text: #eeeef6;
+      --text2: #8888aa;
+      --accent: #7c3aed;
+      --teal: #06d6a0;
+      --border: rgba(255,255,255,0.06);
+      --radius: 12px;
+      --font: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--font); background: var(--bg); color: var(--text);
+      line-height: 1.7; min-height: 100vh;
+    }
+    .guide-header {
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      padding: 16px 24px; display: flex; align-items: center; gap: 16px;
+      position: sticky; top: 0; z-index: 10; backdrop-filter: blur(12px);
+    }
+    .guide-header a {
+      color: var(--accent); text-decoration: none; font-weight: 600;
+      font-size: 0.9rem;
+    }
+    .guide-header a:hover { text-decoration: underline; }
+    .guide-header h1 {
+      font-size: 1.1rem;
+      background: linear-gradient(135deg, var(--accent), var(--teal));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .guide-container {
+      max-width: 800px; margin: 0 auto; padding: 32px 24px 64px;
+    }
+    h2 {
+      font-size: 1.4rem; margin: 40px 0 16px; padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+    h2:first-of-type { margin-top: 0; }
+    h3 { font-size: 1.1rem; margin: 24px 0 10px; color: var(--teal); }
+    p { margin-bottom: 14px; color: var(--text); }
+    ul, ol { margin-bottom: 14px; padding-left: 24px; }
+    li { margin-bottom: 6px; }
+    code {
+      background: rgba(124,58,237,0.15); color: var(--accent);
+      padding: 2px 6px; border-radius: 4px; font-size: 0.9em;
+    }
+    .card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 20px; margin-bottom: 16px;
+    }
+    .card h4 { margin-bottom: 8px; font-size: 1rem; }
+    table {
+      width: 100%; border-collapse: collapse; margin-bottom: 16px;
+      background: var(--card); border-radius: var(--radius); overflow: hidden;
+      border: 1px solid var(--border);
+    }
+    th, td {
+      padding: 10px 14px; text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+    th {
+      background: var(--surface); font-size: 0.8rem; color: var(--text2);
+      text-transform: uppercase; letter-spacing: 0.5px;
+    }
+    tr:last-child td { border-bottom: none; }
+    .badge {
+      display: inline-block; padding: 2px 10px; border-radius: 50px;
+      font-size: 0.8rem; font-weight: 600;
+    }
+    .badge-admin { background: rgba(239,68,68,0.15); color: #ef4444; }
+    .badge-manager { background: rgba(245,158,11,0.15); color: #f59e0b; }
+    .badge-voter { background: rgba(59,130,246,0.15); color: #3b82f6; }
+    .tip {
+      background: rgba(6,214,160,0.08); border-left: 3px solid var(--teal);
+      padding: 12px 16px; border-radius: 0 var(--radius) var(--radius) 0;
+      margin-bottom: 16px; font-size: 0.9rem;
+    }
+    .tip strong { color: var(--teal); }
+    .warning {
+      background: rgba(245,158,11,0.08); border-left: 3px solid #f59e0b;
+      padding: 12px 16px; border-radius: 0 var(--radius) var(--radius) 0;
+      margin-bottom: 16px; font-size: 0.9rem;
+    }
+    .warning strong { color: #f59e0b; }
+    .toc { margin-bottom: 32px; }
+    .toc a {
+      color: var(--accent); text-decoration: none; display: block;
+      padding: 4px 0; font-size: 0.9rem;
+    }
+    .toc a:hover { text-decoration: underline; }
+    .step-num {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 28px; height: 28px; border-radius: 50%;
+      background: var(--accent); color: white; font-weight: 700;
+      font-size: 0.85rem; margin-right: 8px; flex-shrink: 0;
+    }
+    kbd {
+      background: var(--surface); border: 1px solid var(--border);
+      padding: 2px 6px; border-radius: 4px; font-size: 0.85em;
+    }
+    @media (max-width: 768px) {
+      .guide-container { padding: 20px 16px 48px; }
+      h2 { font-size: 1.2rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="guide-header">
+    <a href="/">← Back to App</a>
+    <h1>📖 Planning Poker User Guide</h1>
+  </div>
+
+  <div class="guide-container">
+
+    <!-- Table of Contents -->
+    <div class="card toc">
+      <h4>📑 Table of Contents</h4>
+      <a href="#overview">1. Overview</a>
+      <a href="#getting-started">2. Getting Started</a>
+      <a href="#roles">3. Roles & Permissions</a>
+      <a href="#sessions">4. Sessions</a>
+      <a href="#voting">5. Voting Process</a>
+      <a href="#scales">6. Voting Scales</a>
+      <a href="#results">7. Results & Consensus</a>
+      <a href="#profile">8. Profile & Themes</a>
+      <a href="#admin">9. Admin Panel</a>
+      <a href="#export">10. Exporting Data</a>
+      <a href="#shortcuts">11. Tips & Shortcuts</a>
+    </div>
+
+    <!-- 1. Overview -->
+    <h2 id="overview">1. Overview</h2>
+    <p>
+      Planning Poker is a real-time estimation tool for Scrum teams. During Sprint Refinement or Planning ceremonies,
+      team members independently vote on work item sizes using predefined scales. This eliminates anchoring bias and
+      encourages discussion when estimates diverge.
+    </p>
+    <div class="tip">
+      <strong>💡 Tip:</strong> The app uses polling (every 2 seconds) to keep all participants in sync — no page refresh needed.
+    </div>
+
+    <!-- 2. Getting Started -->
+    <h2 id="getting-started">2. Getting Started</h2>
+    <h3>Logging In</h3>
+    <p>
+      Open the app and enter your <strong>username</strong> and <strong>password</strong>. The default admin credentials are:
+    </p>
+    <div class="card">
+      <p><strong>Username:</strong> <code>admin</code><br><strong>Password:</strong> <code>admin</code></p>
+    </div>
+    <div class="warning">
+      <strong>⚠️ Important:</strong> Change the default admin password immediately after your first login via Profile Settings.
+    </div>
+
+    <h3>Navigation</h3>
+    <p>Once logged in, you'll see the main header with:</p>
+    <ul>
+      <li><strong>📋 Sessions</strong> — View and join active/closed sessions</li>
+      <li><strong>👥 Admin</strong> — User management (admin only)</li>
+      <li><strong>Profile badge</strong> — Click your name to access Profile Settings</li>
+      <li><strong>Logout</strong> — End your session</li>
+    </ul>
+
+    <!-- 3. Roles -->
+    <h2 id="roles">3. Roles & Permissions</h2>
+    <table>
+      <thead>
+        <tr><th>Role</th><th>Icon</th><th>Permissions</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="badge badge-admin">Admin</span></td>
+          <td>👑</td>
+          <td>Full access: manage users, create/close sessions, start voting, vote, export data</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-manager">Session Manager</span></td>
+          <td>📋</td>
+          <td>Create/close sessions, add items, start/reveal voting, revote, vote</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-voter">Voter</span></td>
+          <td>🗳️</td>
+          <td>Join sessions and cast votes</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- 4. Sessions -->
+    <h2 id="sessions">4. Sessions</h2>
+    <h3>Creating a Session</h3>
+    <p>Admins and Session Managers can create new sessions:</p>
+    <ol>
+      <li>Click <strong>+ New Session</strong> on the Sessions dashboard</li>
+      <li>Enter a <strong>session name</strong> (e.g., "Sprint 14 Refinement")</li>
+      <li>Optionally add a <strong>description</strong></li>
+      <li>Choose a <strong>voting scale</strong></li>
+      <li>Click <strong>🚀 Create Session</strong></li>
+    </ol>
+
+    <h3>Joining a Session</h3>
+    <p>Click any session card on the dashboard to join it. You'll automatically appear in the participants list.</p>
+
+    <h3>Session Tabs</h3>
+    <ul>
+      <li><strong>🟢 Active</strong> — Sessions currently accepting votes</li>
+      <li><strong>🔴 Closed</strong> — Completed sessions (view history, export data)</li>
+    </ul>
+
+    <h3>Closing & Reopening</h3>
+    <p>
+      Managers can <strong>🔒 Close</strong> a session to prevent further voting, or <strong>🔓 Reopen</strong> it later.
+      Closing a session preserves all voting history.
+    </p>
+
+    <!-- 5. Voting -->
+    <h2 id="voting">5. Voting Process</h2>
+    <h3>Step-by-Step</h3>
+    <div class="card">
+      <p><span class="step-num">1</span> <strong>Add Items</strong> — The session manager types item titles and clicks <strong>➕ Add to List</strong></p>
+      <p><span class="step-num">2</span> <strong>Start Voting</strong> — Click <strong>▶️ Start Voting</strong> on a pending item</p>
+      <p><span class="step-num">3</span> <strong>Cast Votes</strong> — All participants select a card from the scale</p>
+      <p><span class="step-num">4</span> <strong>Reveal</strong> — The manager clicks <strong>👁️ Reveal Votes</strong> to show results</p>
+      <p><span class="step-num">5</span> <strong>Discuss</strong> — Review the statistics and individual votes</p>
+      <p><span class="step-num">6</span> <strong>Continue</strong> — Either <strong>🔄 Revote</strong> or <strong>📥 Move to History</strong></p>
+    </div>
+
+    <h3>Changing Your Vote</h3>
+    <p>While voting is still in progress (<strong>⏳ Voting in progress...</strong>), you can click a different card to change your vote at any time.</p>
+
+    <h3>Revoting</h3>
+    <p>
+      After results are revealed, the manager can initiate a <strong>🔄 Revote</strong>. The previous round's votes are archived,
+      and a new round begins. The round counter increments (Round 2, Round 3, etc.).
+    </p>
+
+    <!-- 6. Scales -->
+    <h2 id="scales">6. Voting Scales</h2>
+    <table>
+      <thead>
+        <tr><th>Scale</th><th>Values</th><th>Best For</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>🔢 Fibonacci</td>
+          <td>0, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89</td>
+          <td>Story points (most common)</td>
+        </tr>
+        <tr>
+          <td>📊 Modified Fibonacci</td>
+          <td>0, ½, 1, 2, 3, 5, 8, 13, 20, 40, 100</td>
+          <td>More granular estimates</td>
+        </tr>
+        <tr>
+          <td>👕 T-Shirt Size</td>
+          <td>XS, S, M, L, XL, XXL</td>
+          <td>High-level relative sizing</td>
+        </tr>
+        <tr>
+          <td>⚡ Powers of 2</td>
+          <td>0, 1, 2, 4, 8, 16, 32, 64</td>
+          <td>Technical complexity</td>
+        </tr>
+        <tr>
+          <td>🍽️ Effort Menu</td>
+          <td>🍰🧁🍕🍔🥩🦃🐄🐘🏔️🌋</td>
+          <td>Fun & intuitive sizing</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>All scales include special cards: <strong>❓ Not Sure</strong> and <strong>☕ Break</strong>.</p>
+
+    <!-- 7. Results -->
+    <h2 id="results">7. Results & Consensus</h2>
+    <p>When votes are revealed, the following statistics are displayed:</p>
+    <ul>
+      <li><strong>Average</strong> — Mean of all numeric votes</li>
+      <li><strong>Median</strong> — Middle value</li>
+      <li><strong>Minimum</strong> — Lowest vote</li>
+      <li><strong>Maximum</strong> — Highest vote</li>
+    </ul>
+    <div class="tip">
+      <strong>🎉 Consensus!</strong> When all participants cast the same vote, a confetti celebration is triggered
+      and the result is highlighted with a special "Consensus" badge.
+    </div>
+    <p>
+      Individual votes are shown as cards with each voter's avatar, name, and chosen value.
+      Non-numeric votes (❓, ☕) are excluded from statistical calculations.
+    </p>
+
+    <!-- 8. Profile -->
+    <h2 id="profile">8. Profile & Themes</h2>
+    <p>Click your name in the header to open <strong>Profile Settings</strong> where you can:</p>
+    <ul>
+      <li><strong>Display Name</strong> — Change how your name appears to others</li>
+      <li><strong>Avatar</strong> — Pick an emoji avatar</li>
+      <li><strong>Theme</strong> — Choose from 6 themes: Midnight, Ocean, Forest, Sunset, Rose, Light</li>
+      <li><strong>Password</strong> — Change your login password</li>
+    </ul>
+
+    <!-- 9. Admin -->
+    <h2 id="admin">9. Admin Panel</h2>
+    <p>Only users with the <strong>Admin</strong> role can access the 👥 Admin panel.</p>
+    <h3>Managing Users</h3>
+    <ul>
+      <li><strong>+ New User</strong> — Create a user with username, display name, password, role, and avatar</li>
+      <li><strong>✏️ Edit</strong> — Change display name, role, or reset password</li>
+      <li><strong>🚫 Deactivate / ✅ Activate</strong> — Toggle user access without deleting</li>
+    </ul>
+    <div class="warning">
+      <strong>⚠️ Note:</strong> The built-in <code>admin</code> user cannot be deleted or deactivated.
+    </div>
+
+    <!-- 10. Export -->
+    <h2 id="export">10. Exporting Data</h2>
+    <p>
+      Click the <strong>📥</strong> button on any session card to download a JSON file containing:
+    </p>
+    <ul>
+      <li>Session name, description, and scale</li>
+      <li>All items with their votes (by display name)</li>
+      <li>Calculated results (average, median, min, max, consensus)</li>
+      <li>Number of rounds per item</li>
+    </ul>
+
+    <!-- 11. Tips -->
+    <h2 id="shortcuts">11. Tips & Shortcuts</h2>
+    <div class="card">
+      <h4>⌨️ Keyboard</h4>
+      <ul>
+        <li>Press <kbd>Esc</kbd> to close any open modal</li>
+        <li>Press <kbd>Enter</kbd> in the item input to quickly add items</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>💡 Best Practices</h4>
+      <ul>
+        <li>Have the Scrum Master or PO share their screen while reading the item before voting</li>
+        <li>Don't reveal votes too early — wait for all participants</li>
+        <li>When votes diverge significantly, discuss before revoting</li>
+        <li>Use the "Not Sure" card (❓) instead of guessing</li>
+        <li>Export closed sessions for sprint documentation</li>
+      </ul>
+    </div>
+
+    <p style="text-align:center;color:var(--text2);margin-top:40px;font-size:0.85rem">
+      Planning Poker 🃏 — Built for Scrum teams
+    </p>
+  </div>
+</body>
+</html>

@@ -208,7 +208,7 @@ function renderSessions() {
             ${s.status === 'active' ? '🟢 Active' : '🔴 Closed'}
           </span>
         </div>
-        ${s.description ? `<p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:8px">${esc(s.description)}</p>` : ''}
+        ${s.description ? `<p style="font-size:0.95rem;color:var(--text-secondary);margin-bottom:8px">${esc(s.description)}</p>` : ''}
         <div class="session-card-meta">
           <span>${scaleIcon} ${scaleName}</span>
           <span>📝 ${s.itemCount} votes</span>
@@ -421,7 +421,7 @@ function renderPendingItems(pendingItems, isManager, sessionStatus) {
 
   list.innerHTML = pendingItems.map((item, idx) => `
     <div class="pending-item card" style="padding:10px 14px;margin-bottom:6px;display:flex;align-items:center;justify-content:space-between">
-      <span style="font-size:0.9rem"><strong>${idx + 1}.</strong> ${esc(item.title)}</span>
+      <span style="font-size:1rem"><strong>${idx + 1}.</strong> ${esc(item.title)}</span>
       ${isManager && sessionStatus === 'active' ? `
         <button class="btn btn-success btn-sm" onclick="startVoting('${item.id}')"
                 ${hasActiveVoting ? 'disabled title="Please finish the current vote first"' : ''}>
@@ -585,7 +585,7 @@ function renderItemsHistory(completedItems, scale) {
       detailHTML = `
         <div class="history-item-detail" style="margin-top:10px">
           ${item.status === 'revealed' && result ? `
-            <div style="margin-bottom:10px;font-size:0.85rem;color:var(--text-secondary)">
+            <div style="margin-bottom:10px;font-size:0.9rem;color:var(--text-secondary)">
               Avg: <strong style="color:var(--accent)">${result.average}</strong> &nbsp;|&nbsp;
               Med: <strong>${result.median}</strong> &nbsp;|&nbsp;
               Min: ${result.min} &nbsp;|&nbsp; Max: ${result.max}
@@ -601,7 +601,7 @@ function renderItemsHistory(completedItems, scale) {
                 </span>
               `).join('')}
             </div>
-          ` : '<p style="color:var(--text-muted);font-size:0.85rem">No votes cast</p>'}
+          ` : '<p style="color:var(--text-muted);font-size:0.9rem">No votes cast</p>'}
           ${isManager ? `
             <div style="margin-top:10px">
               <button class="btn btn-warning btn-sm" onclick="event.stopPropagation(); revoteHistoryItem('${item.id}')">🔄 Revote</button>
@@ -624,7 +624,7 @@ function renderItemsHistory(completedItems, scale) {
           ${result ? `<span>📊 Avg: ${result.average}</span>` : ''}
           ${roundCount > 1 ? `<span>🔄 ${roundCount} rounds</span>` : ''}
           ${result?.consensus ? '<span>🎯 Consensus</span>' : ''}
-          <span style="margin-left:auto;font-size:0.75rem;color:var(--text-muted)">${isExpanded ? '▲ Collapse' : '▼ Details'}</span>
+          <span style="margin-left:auto;font-size:0.85rem;color:var(--text-muted)">${isExpanded ? '▲ Collapse' : '▼ Details'}</span>
         </div>
         ${detailHTML}
       </div>

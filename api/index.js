@@ -16,6 +16,7 @@ const hashPassword = (pw) => crypto.createHash('sha256').update(pw).digest('hex'
 const AVATARS = ['🦊','🐱','🐶','🐼','🦁','🐸','🐵','🦄','🐲','🦅','🐺','🦈','🐍','🦋','🐢','🦉','🐧','🐙'];
 const PARTICIPANT_TTL = 30; // seconds — user considered "present" if polled within this window
 const voteKey = (sid, iid) => `pp:votes:${sid}:${iid}`;
+const pingKey = (sid) => `pp:pings:${sid}`;
 
 async function getUsers() {
   let users = await store.get('pp:users');
@@ -77,6 +78,7 @@ async function authenticate(req, res, next) {
   const users = await getUsers();
   req.user = users.find(u => u.id === userId);
   if (!req.user) return res.status(401).json({ error: 'User not found' });
+  req._users = users;
   next();
 }
 
@@ -216,8 +218,7 @@ app.post('/api/sessions', authenticate, requireRole('admin', 'session_manager'),
     id: generateId(), name, description: description || '',
     scale: scale || 'fibonacci', status: 'active',
     createdBy: req.user.id, createdAt: new Date().toISOString(),
-    closedAt: null, currentItemId: null, items: [],
-    pings: {}
+    closedAt: null, currentItemId: null, items: []
   };
   sessions.push(session);
   await saveSessions(sessions);
@@ -234,6 +235,7 @@ app.put('/api/sessions/:id/status', authenticate, requireRole('admin', 'session_
     for (const item of session.items) {
       if (item.status === 'voting') await store.del(voteKey(session.id, item.id));
     }
+    await store.del(pingKey(session.id));
   }
   else if (status === 'active') { session.status = 'active'; session.closedAt = null; }
   await saveSessions(sessions);
@@ -248,6 +250,7 @@ app.delete('/api/sessions/:id', authenticate, requireRole('admin', 'session_mana
   for (const item of deleted.items) {
     await store.del(voteKey(deleted.id, item.id));
   }
+  await store.del(pingKey(deleted.id));
   sessions.splice(idx, 1);
   await saveSessions(sessions);
   res.json({ ok: true });
@@ -291,14 +294,13 @@ app.get('/api/sessions/:id/state', authenticate, h(async (req, res) => {
   const session = sessions.find(s => s.id === req.params.id);
   if (!session) return res.status(404).json({ error: 'Session not found' });
 
-  // Update participant ping (embedded in session)
-  if (!session.pings) session.pings = {};
-  session.pings[req.user.id] = Date.now();
-  await saveSessions(sessions);
+  // Update participant ping (separate hash — no sessions write needed)
+  await store.hset(pingKey(session.id), req.user.id, Date.now());
 
   // Resolve active participants
-  const users = await getUsers();
-  const activeIds = getActiveParticipants(session.pings);
+  const users = req._users || await getUsers();
+  const pings = (await store.hgetall(pingKey(session.id))) || {};
+  const activeIds = getActiveParticipants(pings);
   const participants = activeIds.map(uid => {
     const u = users.find(x => x.id === uid);
     return u ? { id: u.id, displayName: u.displayName, avatar: u.avatar, role: u.role } : null;
@@ -453,13 +455,7 @@ app.post('/api/sessions/:id/items/:itemId/revote', authenticate, requireRole('ad
 
 // ── Leave session (stop counting as participant) ────────────────────────────
 app.post('/api/sessions/:id/leave', authenticate, h(async (req, res) => {
-  const sessions = await getSessions();
-  const session = sessions.find(s => s.id === req.params.id);
-  if (session) {
-    if (!session.pings) session.pings = {};
-    delete session.pings[req.user.id];
-    await saveSessions(sessions);
-  }
+  await store.hdel(pingKey(req.params.id), req.user.id);
   res.json({ ok: true });
 }));
 

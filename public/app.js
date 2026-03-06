@@ -38,8 +38,9 @@ async function api(method, url, body) {
 }
 
 // ─── Polling ────────────────────────────────────────────────────────────────
-const POLL_FAST = 3000;   // active voting
-const POLL_SLOW = 10000;  // idle / revealed
+const POLL_FAST = 3000;   // active voting, user hasn't voted yet
+const POLL_NORMAL = 10000; // voted, waiting for reveal
+const POLL_SLOW = 30000;  // no active voting / idle
 const PING_INTERVAL = 15000; // ping every 15s (TTL=30s)
 
 function startSessionPolling() {
@@ -50,8 +51,15 @@ function startSessionPolling() {
 }
 
 function adjustPollInterval(session) {
-  const hasActiveVoting = session.items?.some(i => i.status === 'voting');
-  const desired = hasActiveVoting ? POLL_FAST : POLL_SLOW;
+  const votingItem = session.items?.find(i => i.status === 'voting');
+  let desired;
+  if (votingItem && !votingItem.votes[state.user.id]) {
+    desired = POLL_FAST;   // 3s — need to vote
+  } else if (votingItem) {
+    desired = POLL_NORMAL; // 10s — voted, waiting for reveal
+  } else {
+    desired = POLL_SLOW;   // 30s — no active voting
+  }
   if (desired !== state.currentPollInterval) {
     state.currentPollInterval = desired;
     clearInterval(state.pollTimer);
@@ -91,7 +99,7 @@ function startDashboardPolling() {
   stopDashboardPolling();
   state.dashboardTimer = setInterval(() => {
     if (state.currentView === 'dashboard') loadSessions();
-  }, 10000);
+  }, 30000);
 }
 
 function stopDashboardPolling() {
@@ -221,9 +229,9 @@ async function loadScales() {
 // ═══ DASHBOARD ══════════════════════════════════════════════════════════════
 async function loadSessions() {
   try {
-    state.sessions = await api('GET', `/api/sessions?la=${state.lastActiveTime}`);
-    const presence = await api('GET', '/api/presence');
-    state.onlineUsers = presence;
+    const data = await api('GET', `/api/sessions?la=${state.lastActiveTime}`);
+    state.sessions = data.sessions;
+    state.onlineUsers = data.presence;
     renderSessions();
   } catch (err) {
     showNotification('Failed to load sessions: ' + err.message, 'error');

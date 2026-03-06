@@ -209,13 +209,34 @@ app.get('/api/sessions', authenticate, h(async (req, res) => {
     lastActive: Number(req.query.la) || Date.now()
   });
   const sessions = await getSessions();
-  const users = await getUsers();
-  res.json(sessions.map(s => ({
-    id: s.id, name: s.name, description: s.description, scale: s.scale,
-    status: s.status, createdBy: s.createdBy, createdAt: s.createdAt,
-    closedAt: s.closedAt, itemCount: s.items.length,
-    creatorName: users.find(u => u.id === s.createdBy)?.displayName || '?'
-  })));
+  const users = req._users || await getUsers();
+
+  // Bundle presence into response to avoid separate API call
+  const raw = (await store.hgetall(PRESENCE_KEY)) || {};
+  const cutoff = Date.now() - 35000;
+  const presence = [];
+  for (const [uid, info] of Object.entries(raw)) {
+    if (info.lastSeen > cutoff) {
+      const u = users.find(x => x.id === uid);
+      if (u) presence.push({
+        id: u.id, displayName: u.displayName, avatar: u.avatar, role: u.role,
+        sessionId: info.sessionId || null,
+        sessionName: info.sessionName || null,
+        lastSeen: info.lastSeen,
+        lastActive: info.lastActive || info.lastSeen
+      });
+    }
+  }
+
+  res.json({
+    sessions: sessions.map(s => ({
+      id: s.id, name: s.name, description: s.description, scale: s.scale,
+      status: s.status, createdBy: s.createdBy, createdAt: s.createdAt,
+      closedAt: s.closedAt, itemCount: s.items.length,
+      creatorName: users.find(u => u.id === s.createdBy)?.displayName || '?'
+    })),
+    presence
+  });
 }));
 
 app.post('/api/sessions', authenticate, requireRole('admin', 'session_manager'), h(async (req, res) => {
@@ -323,17 +344,15 @@ app.get('/api/sessions/:id/state', authenticate, h(async (req, res) => {
   const session = sessions.find(s => s.id === req.params.id);
   if (!session) return res.status(404).json({ error: 'Session not found' });
 
-  // Update participant ping (skip if client says noping — throttled to every 15s)
+  // Update participant ping & presence (skip if client says noping — throttled to every 15s)
   if (req.query.noping !== '1') {
     await store.hset(pingKey(session.id), req.user.id, Date.now());
+    await store.hset(PRESENCE_KEY, req.user.id, {
+      sessionId: session.id, sessionName: session.name,
+      lastSeen: Date.now(),
+      lastActive: Number(req.query.la) || Date.now()
+    });
   }
-
-  // Update global presence
-  await store.hset(PRESENCE_KEY, req.user.id, {
-    sessionId: session.id, sessionName: session.name,
-    lastSeen: Date.now(),
-    lastActive: Number(req.query.la) || Date.now()
-  });
 
   // Resolve active participants
   const users = req._users || await getUsers();

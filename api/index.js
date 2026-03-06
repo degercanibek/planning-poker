@@ -294,8 +294,10 @@ app.get('/api/sessions/:id/state', authenticate, h(async (req, res) => {
   const session = sessions.find(s => s.id === req.params.id);
   if (!session) return res.status(404).json({ error: 'Session not found' });
 
-  // Update participant ping (separate hash — no sessions write needed)
-  await store.hset(pingKey(session.id), req.user.id, Date.now());
+  // Update participant ping (skip if client says noping — throttled to every 15s)
+  if (req.query.noping !== '1') {
+    await store.hset(pingKey(session.id), req.user.id, Date.now());
+  }
 
   // Resolve active participants
   const users = req._users || await getUsers();

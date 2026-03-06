@@ -15,6 +15,7 @@ const generateToken = () => crypto.randomBytes(32).toString('hex');
 const hashPassword = (pw) => crypto.createHash('sha256').update(pw).digest('hex');
 const AVATARS = ['🦊','🐱','🐶','🐼','🦁','🐸','🐵','🦄','🐲','🦅','🐺','🦈','🐍','🦋','🐢','🦉','🐧','🐙'];
 const PARTICIPANT_TTL = 30; // seconds — user considered "present" if polled within this window
+const voteKey = (sid, iid) => `pp:votes:${sid}:${iid}`;
 
 async function getUsers() {
   let users = await store.get('pp:users');
@@ -228,7 +229,12 @@ app.put('/api/sessions/:id/status', authenticate, requireRole('admin', 'session_
   const session = sessions.find(s => s.id === req.params.id);
   if (!session) return res.status(404).json({ error: 'Session not found' });
   const { status } = req.body;
-  if (status === 'closed') { session.status = 'closed'; session.closedAt = new Date().toISOString(); }
+  if (status === 'closed') {
+    session.status = 'closed'; session.closedAt = new Date().toISOString();
+    for (const item of session.items) {
+      if (item.status === 'voting') await store.del(voteKey(session.id, item.id));
+    }
+  }
   else if (status === 'active') { session.status = 'active'; session.closedAt = null; }
   await saveSessions(sessions);
   res.json({ ok: true });
@@ -238,6 +244,10 @@ app.delete('/api/sessions/:id', authenticate, requireRole('admin', 'session_mana
   const sessions = await getSessions();
   const idx = sessions.findIndex(s => s.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Session not found' });
+  const deleted = sessions[idx];
+  for (const item of deleted.items) {
+    await store.del(voteKey(deleted.id, item.id));
+  }
   sessions.splice(idx, 1);
   await saveSessions(sessions);
   res.json({ ok: true });
@@ -295,15 +305,16 @@ app.get('/api/sessions/:id/state', authenticate, h(async (req, res) => {
   }).filter(Boolean);
 
   // Build sanitized items (hide votes during voting, show after reveal)
-  const items = session.items.map(item => {
+  const items = await Promise.all(session.items.map(async (item) => {
     if (item.status === 'pending') {
       return { ...item };
     }
     if (item.status === 'voting') {
+      const hashVotes = (await store.hgetall(voteKey(session.id, item.id))) || {};
       return {
         ...item,
         votes: Object.fromEntries(
-          Object.entries(item.votes).map(([uid, v]) => {
+          Object.entries(hashVotes).map(([uid, v]) => {
             const u = users.find(x => x.id === uid);
             return [uid, { voted: true, displayName: u?.displayName || '?', avatar: u?.avatar || '👤' }];
           })
@@ -317,7 +328,7 @@ app.get('/api/sessions/:id/state', authenticate, h(async (req, res) => {
       resolvedVotes[uid] = { ...v, displayName: u?.displayName || '?', avatar: u?.avatar || '👤' };
     }
     return { ...item, votes: resolvedVotes };
-  });
+  }));
 
   const { pings: _p, ...sessionWithoutPings } = session;
   res.json({
@@ -368,6 +379,7 @@ app.post('/api/sessions/:id/items/:itemId/start', authenticate, requireRole('adm
   item.votes = {};
   item.result = null;
   session.currentItemId = item.id;
+  await store.del(voteKey(session.id, item.id));
   await saveSessions(sessions);
   res.json({ ok: true });
 }));
@@ -383,9 +395,7 @@ app.post('/api/sessions/:id/items/:itemId/vote', authenticate, h(async (req, res
   const scale = SCALES[session.scale];
   if (!scale || !scale.values.includes(value)) return res.status(400).json({ error: 'Invalid vote' });
 
-  item.votes[req.user.id] = { value, timestamp: new Date().toISOString() };
-
-  await saveSessions(sessions);
+  await store.hset(voteKey(session.id, item.id), req.user.id, { value, timestamp: new Date().toISOString() });
   res.json({ ok: true });
 }));
 
@@ -397,8 +407,11 @@ app.post('/api/sessions/:id/items/:itemId/reveal', authenticate, requireRole('ad
   const item = session.items.find(i => i.id === req.params.itemId);
   if (!item || item.status !== 'voting') return res.status(400).json({ error: 'Already revealed' });
 
+  const hashVotes = (await store.hgetall(voteKey(session.id, item.id))) || {};
+  item.votes = hashVotes;
   item.status = 'revealed';
   computeResult(item, session.scale);
+  await store.del(voteKey(session.id, item.id));
   await saveSessions(sessions);
   res.json({ ok: true });
 }));
@@ -425,13 +438,15 @@ app.post('/api/sessions/:id/items/:itemId/revote', authenticate, requireRole('ad
   const item = session.items.find(i => i.id === req.params.itemId);
   if (!item) return res.status(404).json({ error: 'Item not found' });
 
-  if (Object.keys(item.votes).length > 0) {
-    item.rounds.push({ votes: { ...item.votes }, result: item.result ? { ...item.result } : null });
+  const hashVotes = (await store.hgetall(voteKey(session.id, item.id))) || {};
+  if (Object.keys(hashVotes).length > 0) {
+    item.rounds.push({ votes: { ...hashVotes }, result: item.result ? { ...item.result } : null });
   }
   item.votes = {};
   item.result = null;
   item.status = 'voting';
   session.currentItemId = item.id;
+  await store.del(voteKey(session.id, item.id));
   await saveSessions(sessions);
   res.json({ ok: true });
 }));

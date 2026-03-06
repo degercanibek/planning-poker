@@ -215,7 +215,8 @@ app.post('/api/sessions', authenticate, requireRole('admin', 'session_manager'),
     id: generateId(), name, description: description || '',
     scale: scale || 'fibonacci', status: 'active',
     createdBy: req.user.id, createdAt: new Date().toISOString(),
-    closedAt: null, currentItemId: null, items: []
+    closedAt: null, currentItemId: null, items: [],
+    pings: {}
   };
   sessions.push(session);
   await saveSessions(sessions);
@@ -239,8 +240,6 @@ app.delete('/api/sessions/:id', authenticate, requireRole('admin', 'session_mana
   if (idx === -1) return res.status(404).json({ error: 'Session not found' });
   sessions.splice(idx, 1);
   await saveSessions(sessions);
-  // Clean up pings
-  await store.del(`pp:pings:${req.params.id}`);
   res.json({ ok: true });
 }));
 
@@ -276,20 +275,20 @@ app.get('/api/sessions/:id/export', authenticate, h(async (req, res) => {
 }));
 
 // ═══ POLLING STATE ENDPOINT ═════════════════════════════════════════════════
-// Client polls this every 2-3s to get real-time session state
+// Client polls this every 3s to get real-time session state
 app.get('/api/sessions/:id/state', authenticate, h(async (req, res) => {
   const sessions = await getSessions();
   const session = sessions.find(s => s.id === req.params.id);
   if (!session) return res.status(404).json({ error: 'Session not found' });
 
-  // Update participant ping
-  const pings = (await store.get(`pp:pings:${session.id}`)) || {};
-  pings[req.user.id] = Date.now();
-  await store.set(`pp:pings:${session.id}`, pings, { ex: 120 });
+  // Update participant ping (embedded in session)
+  if (!session.pings) session.pings = {};
+  session.pings[req.user.id] = Date.now();
+  await saveSessions(sessions);
 
   // Resolve active participants
   const users = await getUsers();
-  const activeIds = getActiveParticipants(pings);
+  const activeIds = getActiveParticipants(session.pings);
   const participants = activeIds.map(uid => {
     const u = users.find(x => x.id === uid);
     return u ? { id: u.id, displayName: u.displayName, avatar: u.avatar, role: u.role } : null;
@@ -320,8 +319,9 @@ app.get('/api/sessions/:id/state', authenticate, h(async (req, res) => {
     return { ...item, votes: resolvedVotes };
   });
 
+  const { pings: _p, ...sessionWithoutPings } = session;
   res.json({
-    ...session,
+    ...sessionWithoutPings,
     items,
     participants
   });
@@ -438,9 +438,13 @@ app.post('/api/sessions/:id/items/:itemId/revote', authenticate, requireRole('ad
 
 // ── Leave session (stop counting as participant) ────────────────────────────
 app.post('/api/sessions/:id/leave', authenticate, h(async (req, res) => {
-  const pings = (await store.get(`pp:pings:${req.params.id}`)) || {};
-  delete pings[req.user.id];
-  await store.set(`pp:pings:${req.params.id}`, pings, { ex: 120 });
+  const sessions = await getSessions();
+  const session = sessions.find(s => s.id === req.params.id);
+  if (session) {
+    if (!session.pings) session.pings = {};
+    delete session.pings[req.user.id];
+    await saveSessions(sessions);
+  }
   res.json({ ok: true });
 }));
 

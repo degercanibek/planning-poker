@@ -37,7 +37,7 @@ async function api(method, url, body) {
 function startSessionPolling() {
   stopSessionPolling();
   pollSessionState();
-  state.pollTimer = setInterval(pollSessionState, 2000);
+  state.pollTimer = setInterval(pollSessionState, 3000);
 }
 
 function stopSessionPolling() {
@@ -64,12 +64,27 @@ function startDashboardPolling() {
   stopDashboardPolling();
   state.dashboardTimer = setInterval(() => {
     if (state.currentView === 'dashboard') loadSessions();
-  }, 5000);
+  }, 10000);
 }
 
 function stopDashboardPolling() {
   if (state.dashboardTimer) { clearInterval(state.dashboardTimer); state.dashboardTimer = null; }
 }
+
+// ─── Visibility API: pause polling when tab is hidden ───────────────────────
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    stopSessionPolling();
+    stopDashboardPolling();
+  } else if (state.token && state.user) {
+    if (state.currentSessionId) {
+      startSessionPolling();
+    } else if (state.currentView === 'dashboard') {
+      loadSessions();
+      startDashboardPolling();
+    }
+  }
+});
 
 // ─── Auth ───────────────────────────────────────────────────────────────────
 async function handleLogin(e) {

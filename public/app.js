@@ -16,7 +16,9 @@ const state = {
   expandedHistory: new Set(),
   pollTimer: null,
   dashboardTimer: null,
-  lastStateJSON: null
+  lastStateJSON: null,
+  lastPingTime: 0,
+  currentPollInterval: 3000
 };
 
 // ─── API Helper ─────────────────────────────────────────────────────────────
@@ -34,10 +36,25 @@ async function api(method, url, body) {
 }
 
 // ─── Polling ────────────────────────────────────────────────────────────────
+const POLL_FAST = 3000;   // active voting
+const POLL_SLOW = 10000;  // idle / revealed
+const PING_INTERVAL = 15000; // ping every 15s (TTL=30s)
+
 function startSessionPolling() {
   stopSessionPolling();
+  state.currentPollInterval = POLL_FAST;
   pollSessionState();
-  state.pollTimer = setInterval(pollSessionState, 3000);
+  state.pollTimer = setInterval(pollSessionState, state.currentPollInterval);
+}
+
+function adjustPollInterval(session) {
+  const hasActiveVoting = session.items?.some(i => i.status === 'voting');
+  const desired = hasActiveVoting ? POLL_FAST : POLL_SLOW;
+  if (desired !== state.currentPollInterval) {
+    state.currentPollInterval = desired;
+    clearInterval(state.pollTimer);
+    state.pollTimer = setInterval(pollSessionState, desired);
+  }
 }
 
 function stopSessionPolling() {
@@ -48,13 +65,20 @@ function stopSessionPolling() {
 async function pollSessionState() {
   if (!state.currentSessionId || !state.token) return;
   try {
-    const data = await api('GET', `/api/sessions/${state.currentSessionId}/state`);
+    const now = Date.now();
+    const needPing = now - state.lastPingTime >= PING_INTERVAL;
+    const url = needPing
+      ? `/api/sessions/${state.currentSessionId}/state`
+      : `/api/sessions/${state.currentSessionId}/state?noping=1`;
+    const data = await api('GET', url);
+    if (needPing) state.lastPingTime = now;
     const json = JSON.stringify(data);
     if (json !== state.lastStateJSON) {
       state.currentSession = data;
       state.lastStateJSON = json;
       renderSession();
     }
+    adjustPollInterval(data);
   } catch (err) {
     console.error('Polling error:', err);
   }

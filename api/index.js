@@ -17,6 +17,7 @@ const AVATARS = ['🦊','🐱','🐶','🐼','🦁','🐸','🐵','🦄','🐲',
 const PARTICIPANT_TTL = 30; // seconds — user considered "present" if polled within this window
 const voteKey = (sid, iid) => `pp:votes:${sid}:${iid}`;
 const pingKey = (sid) => `pp:pings:${sid}`;
+const PRESENCE_KEY = 'pp:presence';
 
 async function getUsers() {
   let users = await store.get('pp:users');
@@ -110,6 +111,7 @@ app.post('/api/login', h(async (req, res) => {
 app.post('/api/logout', authenticate, h(async (req, res) => {
   const token = req.headers.authorization?.replace('Bearer ', '');
   await store.del(`pp:token:${token}`);
+  await store.hdel(PRESENCE_KEY, req.user.id);
   res.json({ ok: true });
 }));
 
@@ -200,6 +202,12 @@ app.delete('/api/users/:id', authenticate, requireRole('admin'), h(async (req, r
 
 // ═══ SESSIONS CRUD ══════════════════════════════════════════════════════════
 app.get('/api/sessions', authenticate, h(async (req, res) => {
+  // Update global presence (user is on dashboard, no session)
+  await store.hset(PRESENCE_KEY, req.user.id, {
+    sessionId: null, sessionName: null,
+    lastSeen: Date.now(),
+    lastActive: Number(req.query.la) || Date.now()
+  });
   const sessions = await getSessions();
   const users = await getUsers();
   res.json(sessions.map(s => ({
@@ -287,6 +295,27 @@ app.get('/api/sessions/:id/export', authenticate, h(async (req, res) => {
   res.json(exportData);
 }));
 
+// ═══ PRESENCE ═══════════════════════════════════════════════════════════════
+app.get('/api/presence', authenticate, h(async (req, res) => {
+  const raw = (await store.hgetall(PRESENCE_KEY)) || {};
+  const users = req._users || await getUsers();
+  const cutoff = Date.now() - 35000;
+  const online = [];
+  for (const [uid, info] of Object.entries(raw)) {
+    if (info.lastSeen > cutoff) {
+      const u = users.find(x => x.id === uid);
+      if (u) online.push({
+        id: u.id, displayName: u.displayName, avatar: u.avatar, role: u.role,
+        sessionId: info.sessionId || null,
+        sessionName: info.sessionName || null,
+        lastSeen: info.lastSeen,
+        lastActive: info.lastActive || info.lastSeen
+      });
+    }
+  }
+  res.json(online);
+}));
+
 // ═══ POLLING STATE ENDPOINT ═════════════════════════════════════════════════
 // Client polls this every 3s to get real-time session state
 app.get('/api/sessions/:id/state', authenticate, h(async (req, res) => {
@@ -298,6 +327,13 @@ app.get('/api/sessions/:id/state', authenticate, h(async (req, res) => {
   if (req.query.noping !== '1') {
     await store.hset(pingKey(session.id), req.user.id, Date.now());
   }
+
+  // Update global presence
+  await store.hset(PRESENCE_KEY, req.user.id, {
+    sessionId: session.id, sessionName: session.name,
+    lastSeen: Date.now(),
+    lastActive: Number(req.query.la) || Date.now()
+  });
 
   // Resolve active participants
   const users = req._users || await getUsers();
@@ -458,6 +494,11 @@ app.post('/api/sessions/:id/items/:itemId/revote', authenticate, requireRole('ad
 // ── Leave session (stop counting as participant) ────────────────────────────
 app.post('/api/sessions/:id/leave', authenticate, h(async (req, res) => {
   await store.hdel(pingKey(req.params.id), req.user.id);
+  // Update presence to show user is back on dashboard
+  await store.hset(PRESENCE_KEY, req.user.id, {
+    sessionId: null, sessionName: null,
+    lastSeen: Date.now(), lastActive: Date.now()
+  });
   res.json({ ok: true });
 }));
 

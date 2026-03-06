@@ -18,7 +18,9 @@ const state = {
   dashboardTimer: null,
   lastStateJSON: null,
   lastPingTime: 0,
-  currentPollInterval: 3000
+  currentPollInterval: 3000,
+  lastActiveTime: Date.now(),
+  onlineUsers: []
 };
 
 // ─── API Helper ─────────────────────────────────────────────────────────────
@@ -67,9 +69,10 @@ async function pollSessionState() {
   try {
     const now = Date.now();
     const needPing = now - state.lastPingTime >= PING_INTERVAL;
-    const url = needPing
-      ? `/api/sessions/${state.currentSessionId}/state`
-      : `/api/sessions/${state.currentSessionId}/state?noping=1`;
+    const params = new URLSearchParams();
+    if (!needPing) params.set('noping', '1');
+    params.set('la', state.lastActiveTime);
+    const url = `/api/sessions/${state.currentSessionId}/state?${params}`;
     const data = await api('GET', url);
     if (needPing) state.lastPingTime = now;
     const json = JSON.stringify(data);
@@ -97,6 +100,9 @@ function stopDashboardPolling() {
 
 // ─── Visibility API: pause polling when tab is hidden ───────────────────────
 document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) {
+    state.lastActiveTime = Date.now();
+  }
   if (document.hidden) {
     stopSessionPolling();
     stopDashboardPolling();
@@ -215,7 +221,9 @@ async function loadScales() {
 // ═══ DASHBOARD ══════════════════════════════════════════════════════════════
 async function loadSessions() {
   try {
-    state.sessions = await api('GET', '/api/sessions');
+    state.sessions = await api('GET', `/api/sessions?la=${state.lastActiveTime}`);
+    const presence = await api('GET', '/api/presence');
+    state.onlineUsers = presence;
     renderSessions();
   } catch (err) {
     showNotification('Failed to load sessions: ' + err.message, 'error');
@@ -230,6 +238,7 @@ function renderSessions() {
   if (filtered.length === 0) {
     grid.innerHTML = '';
     empty.style.display = '';
+    renderOnlineUsers();
     return;
   }
   empty.style.display = 'none';
@@ -267,6 +276,61 @@ function renderSessions() {
       </div>
     `;
   }).join('');
+  renderOnlineUsers();
+}
+
+function renderOnlineUsers() {
+  let panel = document.getElementById('online-users-panel');
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.id = 'online-users-panel';
+    const grid = document.getElementById('sessions-grid');
+    grid.parentNode.insertBefore(panel, grid);
+  }
+
+  const users = state.onlineUsers || [];
+  if (users.length === 0) {
+    panel.innerHTML = '';
+    return;
+  }
+
+  const now = Date.now();
+  const rows = users.map(u => {
+    const isMe = u.id === state.user.id;
+    const activeAgo = Math.floor((now - u.lastActive) / 1000);
+    const isTabHidden = activeAgo > 15;
+    const statusDot = isTabHidden ? '🟡' : '🟢';
+    const statusText = isTabHidden ? formatDuration(activeAgo) + ' away' : 'active';
+    const sessionInfo = u.sessionName
+      ? `<span class="presence-session" onclick="joinSession('${u.sessionId}')">\uD83C\uDFAE ${esc(u.sessionName)}</span>`
+      : '<span class="presence-session presence-idle">\uD83C\uDFE0 Dashboard</span>';
+    return `
+      <div class="presence-row${isMe ? ' presence-me' : ''}">
+        <span class="presence-avatar">${u.avatar}</span>
+        <span class="presence-name">${esc(u.displayName)}</span>
+        <span class="presence-status">${statusDot} ${statusText}</span>
+        ${sessionInfo}
+      </div>
+    `;
+  }).join('');
+
+  panel.innerHTML = `
+    <div class="presence-card">
+      <div class="presence-header">
+        <span>👥 Online Users</span>
+        <span class="presence-count">${users.length}</span>
+      </div>
+      <div class="presence-list">${rows}</div>
+    </div>
+  `;
+}
+
+function formatDuration(seconds) {
+  if (seconds < 60) return `${seconds}s`;
+  const mins = Math.floor(seconds / 60);
+  if (mins < 60) return `${mins}m`;
+  const hours = Math.floor(mins / 60);
+  return `${hours}h`;
 }
 
 async function toggleSessionStatus(id, status) {

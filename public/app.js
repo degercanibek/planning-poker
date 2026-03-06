@@ -293,7 +293,7 @@ function renderOnlineUsers() {
     panel = document.createElement('div');
     panel.id = 'online-users-panel';
     const grid = document.getElementById('sessions-grid');
-    grid.parentNode.insertBefore(panel, grid);
+    grid.parentNode.insertBefore(panel, grid.nextSibling);
   }
 
   const users = state.onlineUsers || [];
@@ -801,6 +801,7 @@ async function startVoting(itemId) {
   state.myVote = null;
   try {
     await api('POST', `/api/sessions/${state.currentSessionId}/items/${itemId}/start`);
+    await pollSessionState();
   } catch (err) {
     showNotification(err.message, 'error');
   }
@@ -813,6 +814,7 @@ async function revealVotes() {
   if (!currentItem) return;
   try {
     await api('POST', `/api/sessions/${s.id}/items/${currentItem.id}/reveal`);
+    await pollSessionState();
   } catch (err) {
     showNotification(err.message, 'error');
   }
@@ -826,6 +828,7 @@ async function revote() {
   state.myVote = null;
   try {
     await api('POST', `/api/sessions/${s.id}/items/${currentItem.id}/revote`);
+    await pollSessionState();
   } catch (err) {
     showNotification(err.message, 'error');
   }
@@ -860,6 +863,7 @@ async function closeVoting() {
   if (!currentItem) return;
   try {
     await api('POST', `/api/sessions/${s.id}/items/${currentItem.id}/close`);
+    await pollSessionState();
   } catch (err) {
     showNotification(err.message, 'error');
   }
